@@ -16,7 +16,7 @@ export default async function handler(req, res) {
   try {
     const { data, error } = await supabase
       .from('referrals')
-      .select('referee_id, profiles!inner(username)')
+      .select('referee_id, referee_profile!inner(username)')
       .eq('referrer_id', userId);
 
     if (error) {
@@ -29,7 +29,7 @@ export default async function handler(req, res) {
 
     const friends = data.map(item => ({
       id: item.referee_id,
-      username: item.profiles?.username || 'Unknown'
+      username: item.referee_profile?.username || 'Unknown'
     }));
 
     return res.status(200).json({ friends });
