@@ -582,7 +582,7 @@ useEffect(() => {
 }, [userId]);
 
 const handleCopyLink = async () => {
-  const link = `https://t.me/Zapcoinnbot?start=${userId}`;
+  const link = `https://t.me/Zapcoinnbot/startapp?start=${userId}`;
   try {
     await navigator.clipboard.writeText(link);
     setCopied(true);
@@ -593,7 +593,7 @@ const handleCopyLink = async () => {
 };
 
 const handleShareInvite = () => {
-  const link = `https://t.me/Zapcoinnbot?start=${userId}`;
+  const link = `https://t.me/Zapcoinnbot/startapp?start=${userId}`;
   const text = `Hey! Join me in Zapcoin and earn TON! ${link}`;
   const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`;
   window.open(shareUrl, '_blank');
@@ -1271,7 +1271,7 @@ ${coins >= getRechargingSpeedCost(rechargingSpeedLevel) ? 'cursor-pointer hover:
         {/* Link Card - No background, just border */}
         <div className="flex-1 border border-gray-700 rounded-lg p-4 bg-gray-900/50">
           <code className="text-sm text-gray-300 break-all block font-mono">
-            https://t.me/Zapcoinnbot?start={userId}
+            https://t.me/Zapcoinnbot/startapp?start={userId}
           </code>
         </div>
         
