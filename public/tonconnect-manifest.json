@@ -1,5 +1,5 @@
 {
   "name": "zapcoin",
-  "url": "http://localhost:3000",
+  "url": "https://zapcoin-murex.vercel.app",
   "iconUrl": "http://localhost:3000/icons/coin.png"
 }
