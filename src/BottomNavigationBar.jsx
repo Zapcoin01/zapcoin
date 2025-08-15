@@ -279,35 +279,89 @@ useEffect(() => {
   };
 }, []);
 
+// Get Telegram user at startup
+const [userId, setUserId] = useState(null);
+const [userName, setUserName] = useState('User');
+
 useEffect(() => {
-  const urlParams = new URLSearchParams(window.location.search);
-  const referrerId = urlParams.get('start'); // e.g., ?start=abc123
-
-  if (referrerId) {
-    const myId = localStorage.getItem('userId');
-    
-    // Prevent self-referral
-    if (myId && myId !== referrerId) {
-      const referredList = JSON.parse(localStorage.getItem('referredList') || '[]');
-      
-      // Avoid duplicate rewards
-      if (!referredList.includes(myId)) {
-        // Credit the referrer with 5000 coins
-        setCoins(prev => prev + 5000);
-
-        // Add this user to the list of people who joined via this link
-        const updatedList = [...referredList, myId];
-        localStorage.setItem('referredList', JSON.stringify(updatedList));
-
-        // Update friends list in UI
-        setFriends(prev => [
-          ...prev,
-          { id: myId, username: 'friend_' + Date.now() } // Telegram username not available in browser
-        ]);
-      }
+  const tg = window.Telegram?.WebApp;
+  if (tg) {
+    tg.ready();
+    const user = tg.initDataUnsafe?.user;
+    if (user) {
+      const tgId = user.id.toString();
+      const username = user.username || `user_${tgId.slice(-6)}`;
+      setUserId(tgId);
+      setUserName(username);
+      localStorage.setItem('userId', tgId);
+      localStorage.setItem('userName', username);
     }
+  } else {
+    // Fallback for testing
+    const fallbackId = localStorage.getItem('userId') || Math.random().toString(36).substr(2, 9);
+    setUserId(fallbackId);
+    setUserName('Friend');
+    localStorage.setItem('userId', fallbackId);
   }
 }, []);
+
+// Handle referral on load
+useEffect(() => {
+  if (!userId) return;
+
+  const urlParams = new URLSearchParams(window.location.search);
+  const referrerId = urlParams.get('start'); // Who referred?
+
+  if (!referrerId || referrerId === userId) return;
+
+  // Prevent duplicate processing
+  const hasProcessed = localStorage.getItem(`referral_processed_${userId}`);
+  if (hasProcessed) return;
+
+  localStorage.setItem(`referral_processed_${userId}`, 'true');
+
+  // Call backend API
+  fetch('/api/handleReferral', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      referrerId,
+      refereeId: userId,
+      refereeUsername: userName
+    })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.success) {
+      // If the current user is the referrer (rare), update coins
+      if (referrerId === userId) {
+        setCoins(prev => prev + 10000);
+      }
+      // You can show a toast or alert
+      alert(`Referral recorded! ${userName} joined via your link.`);
+    }
+  })
+  .catch(err => {
+    console.error('Referral failed:', err);
+  });
+
+}, [userId, userName]);
+
+// Load friends list from Supabase
+useEffect(() => {
+  if (!userId) return;
+
+  fetch(`/api/getFriends?userId=${userId}`)
+    .then(res => res.json())
+    .then(data => {
+      if (data.friends) {
+        setFriends(data.friends);
+      }
+    })
+    .catch(err => {
+      console.error('Failed to load friends:', err);
+    });
+}, [userId]);
 
 const handleCoinClick = (e) => {
 // Only vibrate if not already vibrating
@@ -509,19 +563,26 @@ const startRetweetTask = () => {
   }, 10000);
 };
 
-const [userId] = useState(() => {
-  let id = localStorage.getItem('userId');
-  if (!id) {
-    id = Math.random().toString(36).substr(2, 9); // e.g., "abc123xyz"
-    localStorage.setItem('userId', id);
-  }
-  return id;
-});
-
 const [friends, setFriends] = useState([]);
 
+// Load friends list from Supabase
+useEffect(() => {
+  if (!userId) return;
+
+  fetch(`/api/getFriends?userId=${userId}`)
+    .then(res => res.json())
+    .then(data => {
+      if (data.friends) {
+        setFriends(data.friends);
+      }
+    })
+    .catch(err => {
+      console.error('Failed to load friends:', err);
+    });
+}, [userId]);
+
 const handleCopyLink = async () => {
-  const link = `https://t.me/flipgame30bot?start=${userId}`;
+  const link = `https://t.me/Zapcoinbot?start=${userId}`;
   try {
     await navigator.clipboard.writeText(link);
     setCopied(true);
@@ -532,7 +593,7 @@ const handleCopyLink = async () => {
 };
 
 const handleShareInvite = () => {
-  const link = `https://t.me/flipgame30bot?start=${userId}`;
+  const link = `https://t.me/Zapcoinbot?start=${userId}`;
   const text = `Hey! Join me in Zapcoin and earn TON! ${link}`;
   const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`;
   window.open(shareUrl, '_blank');
@@ -1210,7 +1271,7 @@ ${coins >= getRechargingSpeedCost(rechargingSpeedLevel) ? 'cursor-pointer hover:
         {/* Link Card - No background, just border */}
         <div className="flex-1 border border-gray-700 rounded-lg p-4 bg-gray-900/50">
           <code className="text-sm text-gray-300 break-all block font-mono">
-            https://t.me/flipgame30bot?start={userId}
+            https://t.me/Zapcoinbot?start={userId}
           </code>
         </div>
         
