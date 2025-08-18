@@ -357,7 +357,6 @@ if (!referrerId) {
   });
 
 }, [userId, userName]);
-
 const handleCoinClick = (e) => {
 // Only vibrate if not already vibrating
   if (navigator.vibrate && !isVibrating) {
@@ -561,7 +560,7 @@ const startRetweetTask = () => {
 const [friends, setFriends] = useState([]);
 
 const handleCopyLink = async () => {
-  const link = `https://t.me/Zapcoinnbot/startapp?start=${userId}`;
+  const link = `https://t.me/Zapcoinnbot/app?startapp=${userId}`;
   try {
     await navigator.clipboard.writeText(link);
     setCopied(true);
@@ -572,7 +571,7 @@ const handleCopyLink = async () => {
 };
 
 const handleShareInvite = () => {
-  const link = `https://t.me/Zapcoinnbot/startapp?start=${userId}`;
+  const link = `https://t.me/Zapcoinnbot/app?startapp=${userId}`;
   const text = `Hey! Join me in Zapcoin and earn TON! ${link}`;
   const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`;
   window.open(shareUrl, '_blank');
@@ -1250,7 +1249,7 @@ ${coins >= getRechargingSpeedCost(rechargingSpeedLevel) ? 'cursor-pointer hover:
         {/* Link Card - No background, just border */}
         <div className="flex-1 border border-gray-700 rounded-lg p-4 bg-gray-900/50">
           <code className="text-sm text-gray-300 break-all block font-mono">
-            const link = `https://t.me/Zapcoinnbot/startapp?start=${userId}`;
+            const link = `https://t.me/Zapcoinnbot/app?startapp=${userId}`;
           </code>
         </div>
         
