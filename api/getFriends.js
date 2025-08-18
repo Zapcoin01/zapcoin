@@ -1,9 +1,9 @@
-// src/pages/api/getFriends.js
+// api/getFriends.js
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
-  process.env.SUPABASE_URL,             // ✅ service env var
-  process.env.SUPABASE_SERVICE_ROLE_KEY // ✅ service role key
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
 export default async function handler(req, res) {
@@ -18,7 +18,7 @@ export default async function handler(req, res) {
       .from('referrals')
       .select(`
         referee_id,
-        referee_profile:profiles!referrals_referee_id_fkey(username)
+        referee_profile:profiles!inner(username)
       `)
       .eq('referrer_id', userId);
 

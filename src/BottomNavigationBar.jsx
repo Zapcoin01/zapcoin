@@ -288,16 +288,24 @@ useEffect(() => {
   if (tg) {
     tg.ready();
     const user = tg.initDataUnsafe?.user;
+    const startParam = tg.initDataUnsafe?.start_param; // ← This is the referral ID!
+
     if (user) {
       const tgId = user.id.toString();
       const username = user.username || `user_${tgId.slice(-6)}`;
+
       setUserId(tgId);
       setUserName(username);
+
       localStorage.setItem('userId', tgId);
       localStorage.setItem('userName', username);
+
+      // Save referral ID if present
+      if (startParam) {
+        localStorage.setItem('referrerId', startParam);
+      }
     }
   } else {
-    // Fallback for testing
     const fallbackId = localStorage.getItem('userId') || Math.random().toString(36).substr(2, 9);
     setUserId(fallbackId);
     setUserName('Friend');
@@ -310,7 +318,10 @@ useEffect(() => {
   if (!userId) return;
 
   const urlParams = new URLSearchParams(window.location.search);
-  const referrerId = urlParams.get('start'); // Who referred?
+  let referrerId = urlParams.get('start');
+if (!referrerId) {
+  referrerId = localStorage.getItem('referrerId');
+}
 
   if (!referrerId || referrerId === userId) return;
 
@@ -346,22 +357,6 @@ useEffect(() => {
   });
 
 }, [userId, userName]);
-
-// Load friends list from Supabase2
-useEffect(() => {
-  if (!userId) return;
-
-  fetch(`/api/getFriends?userId=${userId}`)
-    .then(res => res.json())
-    .then(data => {
-      if (data.friends) {
-        setFriends(data.friends);
-      }
-    })
-    .catch(err => {
-      console.error('Failed to load friends:', err);
-    });
-}, [userId]);
 
 const handleCoinClick = (e) => {
 // Only vibrate if not already vibrating
@@ -566,7 +561,7 @@ const startRetweetTask = () => {
 const [friends, setFriends] = useState([]);
 
 const handleCopyLink = async () => {
-  const link = `https://t.me/Zapcoinnbot?start=${userId}`;
+  const link = `https://t.me/Zapcoinnbot/startapp?start=${userId}`;
   try {
     await navigator.clipboard.writeText(link);
     setCopied(true);
@@ -577,7 +572,7 @@ const handleCopyLink = async () => {
 };
 
 const handleShareInvite = () => {
-  const link = `https://t.me/Zapcoinnbot?start=${userId}`;
+  const link = `https://t.me/Zapcoinnbot/startapp?start=${userId}`;
   const text = `Hey! Join me in Zapcoin and earn TON! ${link}`;
   const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`;
   window.open(shareUrl, '_blank');
@@ -1255,7 +1250,7 @@ ${coins >= getRechargingSpeedCost(rechargingSpeedLevel) ? 'cursor-pointer hover:
         {/* Link Card - No background, just border */}
         <div className="flex-1 border border-gray-700 rounded-lg p-4 bg-gray-900/50">
           <code className="text-sm text-gray-300 break-all block font-mono">
-            https://t.me/Zapcoinnbot?start={userId}
+            const link = `https://t.me/Zapcoinnbot/startapp?start=${userId}`;
           </code>
         </div>
         
