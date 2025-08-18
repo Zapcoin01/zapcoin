@@ -1,6 +1,11 @@
 // src/pages/api/handleReferral.js
 import { createClient } from '@supabase/supabase-js';
 
+const supabase = createClient(
+  process.env.SUPABASE_URL,             // ✅ service env var
+  process.env.SUPABASE_SERVICE_ROLE_KEY // ✅ service role key
+);
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -12,38 +17,35 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
-  const supabase = createClient(
-    process.env.VITE_SUPABASE_URL,
-    process.env.VITE_SUPABASE_ANON_KEY
-  );
-
   try {
-    // 1. Insert or update the referee (new user)
+    // 1. Insert or update referee
     const { error: profileError } = await supabase
       .from('profiles')
-      .upsert({
-        tg_id: refereeId,
-        username: refereeUsername,
-        coins: 0
-      }, {
-        onConflict: 'tg_id'
-      });
+      .upsert(
+        {
+          tg_id: refereeId,
+          username: refereeUsername
+        },
+        { onConflict: 'tg_id' }
+      );
 
     if (profileError) throw profileError;
 
-    // 2. Check if this referral already exists
-    const {  existing } = await supabase
+    // 2. Check if referral already exists
+    const { data: existing, error: existingError } = await supabase
       .from('referrals')
       .select('id')
       .eq('referrer_id', referrerId)
       .eq('referee_id', refereeId)
       .maybeSingle();
 
+    if (existingError) throw existingError;
+
     if (existing) {
       return res.status(200).json({ success: true, message: 'Already referred' });
     }
 
-    // 3. Insert new referral
+    // 3. Insert referral
     const { error: referralError } = await supabase
       .from('referrals')
       .insert({
@@ -53,8 +55,8 @@ export default async function handler(req, res) {
 
     if (referralError) throw referralError;
 
-    // 4. Get current coins of referrer
-    const {  referrer, error: fetchError } = await supabase
+    // 4. Reward referrer
+    const { data: referrer, error: fetchError } = await supabase
       .from('profiles')
       .select('coins')
       .eq('tg_id', referrerId)
@@ -64,8 +66,8 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'Referrer not found' });
     }
 
-    // 5. Add 10,000 coins to referrer
     const newCoinCount = referrer.coins + 10000;
+
     const { error: updateError } = await supabase
       .from('profiles')
       .update({ coins: newCoinCount })
@@ -73,15 +75,13 @@ export default async function handler(req, res) {
 
     if (updateError) throw updateError;
 
-    // 6. Optional: Log transaction
-    await supabase
-      .from('transactions')
-      .insert({
-        tg_id: referrerId,
-        amount: 10000,
-        reason: 'referral_reward',
-        meta: { referee_id: refereeId }
-      });
+    // 5. Log transaction
+    await supabase.from('transactions').insert({
+      tg_id: referrerId,
+      amount: 10000,
+      reason: 'referral_reward',
+      meta: { referee_id: refereeId }
+    });
 
     return res.status(200).json({
       success: true,
