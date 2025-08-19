@@ -336,8 +336,6 @@ useEffect(() => {
   }
 }, []);
 
-
-
 // Handle referral on load
 useEffect(() => {
   if (!userId) return;
@@ -400,6 +398,12 @@ useEffect(() => {
     });
 
 }, [userId, userName]);
+
+useEffect(() => {
+  if (activeTab === 'friends' && userId) {
+    fetchProfileAndFriends(userId);
+  }
+}, [activeTab, userId]);
 
 const handleCoinClick = (e) => {
 // Only vibrate if not already vibrating
