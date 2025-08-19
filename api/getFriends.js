@@ -14,30 +14,52 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { data, error } = await supabase
+    // First, get all referrals for this user
+    const { data: referrals, error: referralError } = await supabase
       .from('referrals')
-      .select(`
-        referee_id,
-        referee_profile:profiles!inner(username)
-      `)
+      .select('referee_id')
       .eq('referrer_id', userId);
 
-    if (error) {
-      console.error('Supabase error:', error);
+    if (referralError) {
+      console.error('Referrals query error:', referralError);
       return res.status(500).json({
-        error: 'Database query failed',
-        details: error.message
+        error: 'Failed to fetch referrals',
+        details: referralError.message
       });
     }
 
-    const friends = data.map(item => ({
-      id: item.referee_id,
-      username: item.referee_profile?.username || 'Unknown'
+    // If no referrals, return empty friends list
+    if (!referrals || referrals.length === 0) {
+      return res.status(200).json({ friends: [] });
+    }
+
+    // Get the referee IDs
+    const refereeIds = referrals.map(r => r.referee_id);
+
+    // Now get the profile information for these referees
+    const { data: profiles, error: profileError } = await supabase
+      .from('profiles')
+      .select('tg_id, username')
+      .in('tg_id', refereeIds);
+
+    if (profileError) {
+      console.error('Profiles query error:', profileError);
+      return res.status(500).json({
+        error: 'Failed to fetch friend profiles',
+        details: profileError.message
+      });
+    }
+
+    // Format the friends data
+    const friends = profiles.map(profile => ({
+      id: profile.tg_id,
+      username: profile.username || `user_${profile.tg_id.slice(-6)}`
     }));
 
     return res.status(200).json({ friends });
+
   } catch (error) {
-    console.error('Server error:', error);
+    console.error('Server error in getFriends:', error);
     return res.status(500).json({
       error: 'Internal server error',
       details: error.message

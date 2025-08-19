@@ -81,6 +81,8 @@ const taskTimersRef = useRef({
 
 const [copied, setCopied] = useState(false);
 
+const [isLoadingFriends, setIsLoadingFriends] = useState(false);
+
 // Links for Task Section Change Later
 const JOIN_CHANNEL_LINK = "https://t.me/moopanda1m"; // Replace with your link
 const FOLLOW_X_LINK = "https://x.com/FlipgameTon"; // Replace with your X profile
@@ -607,14 +609,22 @@ const startRetweetTask = () => {
 
 const [friends, setFriends] = useState([]);
 
-// helper: refresh profile & friends from server
 const fetchProfileAndFriends = async (uid = userId) => {
-  if (!uid) return;
+  if (!uid) {
+    console.warn('No userId provided to fetchProfileAndFriends');
+    return;
+  }
+  
+  setIsLoadingFriends(true);
+  
   try {
-    // 1) profile
+    console.log('Fetching profile and friends for user:', uid);
+    
+    // 1) Fetch profile
     const pRes = await fetch(`/api/getProfile?userId=${encodeURIComponent(uid)}`);
     if (pRes.ok) {
       const { profile } = await pRes.json();
+      console.log('Profile fetched:', profile);
       if (profile) {
         setCoins(Number(profile.coins || 0));
         if (profile.username) {
@@ -623,19 +633,24 @@ const fetchProfileAndFriends = async (uid = userId) => {
         }
       }
     } else {
-      console.warn('getProfile failed', await pRes.text());
+      const errorText = await pRes.text();
+      console.warn('getProfile failed:', pRes.status, errorText);
     }
 
-    // 2) friends
+    // 2) Fetch friends
     const fRes = await fetch(`/api/getFriends?userId=${encodeURIComponent(uid)}`);
     if (fRes.ok) {
       const { friends: serverFriends } = await fRes.json();
+      console.log('Friends fetched:', serverFriends);
       setFriends(serverFriends || []);
     } else {
-      console.warn('getFriends failed', await fRes.text());
+      const errorText = await fRes.text();
+      console.warn('getFriends failed:', fRes.status, errorText);
     }
   } catch (err) {
-    console.error('fetchProfileAndFriends error', err);
+    console.error('fetchProfileAndFriends error:', err);
+  } finally {
+    setIsLoadingFriends(false);
   }
 };
 
@@ -648,6 +663,12 @@ const handleCopyLink = async () => {
     setTimeout(() => setCopied(false), 2000);
   } catch (err) {
     alert('Link copied!');
+  }
+};
+
+const handleRefreshFriends = () => {
+  if (userId) {
+    fetchProfileAndFriends(userId);
   }
 };
 
@@ -1310,7 +1331,7 @@ ${coins >= getRechargingSpeedCost(rechargingSpeedLevel) ? 'cursor-pointer hover:
   </div>
 ) : activeTab === 'friends' ? (
   <div className="w-full max-w-md mx-auto px-4 pt-6 pb-28">
-    {/* Invite Friends Title - Moved to top */}
+    {/* Invite Friends Title */}
     <div className="text-center mb-8">
       <h2 className="text-white text-3xl font-bold mb-2">
         Invite Friends 
@@ -1321,20 +1342,18 @@ ${coins >= getRechargingSpeedCost(rechargingSpeedLevel) ? 'cursor-pointer hover:
       </p>
     </div>
 
-    {/* Referral Link Section - Redesigned */}
+    {/* Referral Link Section */}
     <div className="mb-8">
       <label className="text-white text-sm font-medium mb-3 block">
         Your Referral Link
       </label>
       <div className="flex items-center gap-3">
-        {/* Link Card - No background, just border */}
         <div className="flex-1 border border-gray-700 rounded-lg p-4 bg-gray-900/50">
           <code className="text-sm text-gray-300 break-all block font-mono">
-            const link = `https://t.me/Zapcoinnbot?startapp=${encodeURIComponent(userId)}`;
+            https://t.me/Zapcoinnbot?startapp={userId}
           </code>
         </div>
         
-        {/* Copy Button - Outside the card */}
         <button
           onClick={handleCopyLink}
           className={`flex items-center justify-center w-12 h-12 rounded-lg font-medium transition-all duration-200 ${
@@ -1344,11 +1363,7 @@ ${coins >= getRechargingSpeedCost(rechargingSpeedLevel) ? 'cursor-pointer hover:
           }`}
           disabled={copied}
         >
-          {copied ? (
-            <Check size={20} />
-          ) : (
-            <Copy size={20} />
-          )}
+          {copied ? <Check size={20} /> : <Copy size={20} />}
         </button>
       </div>
       {copied && (
@@ -1359,18 +1374,37 @@ ${coins >= getRechargingSpeedCost(rechargingSpeedLevel) ? 'cursor-pointer hover:
       )}
     </div>
 
-    {/* Your Friends List - Kept the same with minor improvements */}
+    {/* Your Friends List */}
     <div className="mb-8">
-      <div className="flex items-center gap-2 mb-4">
-        <Users className="text-white" size={20} />
-        <h3 className="text-white text-xl font-bold">Your Friends</h3>
-        <span className="bg-blue-600 text-white text-xs px-2 py-1 rounded-full font-medium">
-          {friends.length}
-        </span>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Users className="text-white" size={20} />
+          <h3 className="text-white text-xl font-bold">Your Friends</h3>
+          <span className="bg-blue-600 text-white text-xs px-2 py-1 rounded-full font-medium">
+            {friends.length}
+          </span>
+        </div>
+        
+        {/* Refresh Button */}
+        <button
+          onClick={handleRefreshFriends}
+          disabled={isLoadingFriends}
+          className="bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-lg transition-colors duration-200 disabled:opacity-50"
+          title="Refresh friends list"
+        >
+          <div className={`w-4 h-4 ${isLoadingFriends ? 'animate-spin' : ''}`}>
+            🔄
+          </div>
+        </button>
       </div>
       
       <div className="max-h-60 overflow-y-auto space-y-3 pr-2">
-        {friends.length === 0 ? (
+        {isLoadingFriends ? (
+          <div className="text-center py-8">
+            <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+            <p className="text-gray-400 text-sm">Loading friends...</p>
+          </div>
+        ) : friends.length === 0 ? (
           <div className="text-center py-8">
             <Users className="mx-auto mb-3 text-gray-600" size={48} />
             <p className="text-gray-500 text-sm">No friends joined yet</p>
@@ -1381,7 +1415,7 @@ ${coins >= getRechargingSpeedCost(rechargingSpeedLevel) ? 'cursor-pointer hover:
         ) : (
           friends.map((friend, index) => (
             <div 
-              key={index} 
+              key={friend.id || index} 
               className="flex items-center gap-3 bg-gray-800/60 hover:bg-gray-800/80 p-3 rounded-lg transition-colors duration-200 border border-gray-700/50"
             >
               <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-lg">
@@ -1391,8 +1425,8 @@ ${coins >= getRechargingSpeedCost(rechargingSpeedLevel) ? 'cursor-pointer hover:
                 @{friend.username}
               </span>
               <div className="text-right">
-                <span className="text-yellow-400 font-bold text-sm">+5,000</span>
-                <p className="text-gray-500 text-xs">TON</p>
+                <span className="text-yellow-400 font-bold text-sm">+10,000</span>
+                <p className="text-gray-500 text-xs">coins</p>
               </div>
             </div>
           ))
@@ -1400,7 +1434,7 @@ ${coins >= getRechargingSpeedCost(rechargingSpeedLevel) ? 'cursor-pointer hover:
       </div>
     </div>
 
-    {/* Share Button - Improved design and positioning */}
+    {/* Share Button */}
     <div className="fixed bottom-20 left-0 right-0 flex justify-center z-40 px-4">
       <button
         onClick={handleShareInvite}
@@ -1411,7 +1445,7 @@ ${coins >= getRechargingSpeedCost(rechargingSpeedLevel) ? 'cursor-pointer hover:
       </button>
     </div>
   </div>
-) 
+)
 : (
 <div className="bg-gray-800 border border-gray-700 rounded-lg p-8 text-center">
 <h2 className="text-white text-2xl font-semibold mb-4">
