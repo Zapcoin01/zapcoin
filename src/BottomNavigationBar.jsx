@@ -308,7 +308,11 @@ useEffect(() => {
 
     if (user) {
       const tgId = user.id.toString();
-      const username = user.username || `user_${tgId.slice(-6)}`;
+      const username =
+        user.username ||
+        user.first_name ||
+        (user.last_name ? `${user.first_name || ''} ${user.last_name}`.trim() : null) ||
+        `user_${tgId.slice(-6)}`;
 
       setUserId(tgId);
       setUserName(username);
@@ -333,25 +337,43 @@ useEffect(() => {
 }, []);
 
 
-// Handle referral on load1
+
+// Handle referral on load
 useEffect(() => {
   if (!userId) return;
 
-  const urlParams = new URLSearchParams(window.location.search);
-  let referrerId = urlParams.get('start');
-if (!referrerId) {
-  referrerId = localStorage.getItem('referrerId');
-}
+  const tg = window.Telegram?.WebApp;
+  let referrerId = null;
 
+  // 1. Telegram-provided start_param (best case)
+  if (tg && tg.initDataUnsafe?.start_param) {
+    referrerId = tg.initDataUnsafe.start_param;
+  }
+
+  // 2. URL fallback (some clients append ?startapp= or ?tgWebAppStartParam=)
+  if (!referrerId) {
+    const urlParams = new URLSearchParams(window.location.search);
+    referrerId =
+      urlParams.get('startapp') ||
+      urlParams.get('tgWebAppStartParam') ||
+      urlParams.get('start') ||
+      null;
+  }
+
+  // 3. LocalStorage fallback (set earlier in the first useEffect)
+  if (!referrerId) {
+    referrerId = localStorage.getItem('referrerId');
+  }
+
+  // Don’t allow self-referral
   if (!referrerId || referrerId === userId) return;
 
   // Prevent duplicate processing
-  const hasProcessed = localStorage.getItem(`referral_processed_${userId}`);
-  if (hasProcessed) return;
+  const processedKey = `referral_processed_${userId}`;
+  if (localStorage.getItem(processedKey)) return;
+  localStorage.setItem(processedKey, 'true');
 
-  localStorage.setItem(`referral_processed_${userId}`, 'true');
-
-  // Call backend API
+  // Call backend to handle referral
   fetch('/api/handleReferral', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -361,20 +383,21 @@ if (!referrerId) {
       refereeUsername: userName
     })
   })
-  .then(res => res.json())
-  .then(data => {
-    if (data.success) {
-      // If the current user is the referrer (rare), update coins
-      if (referrerId === userId) {
-        setCoins(prev => prev + 10000);
+    .then(res => res.json())
+    .then(async data => {
+      if (data.success) {
+        // Refresh profile + friends to reflect DB changes
+        await fetchProfileAndFriends(userId);
+
+        // Optional: show a small notice to user
+        alert('Referral recorded — thanks for joining!');
+      } else {
+        console.warn('Referral API:', data);
       }
-      // You can show a toast or alert
-      alert(`Referral recorded! ${userName} joined via your link.`);
-    }
-  })
-  .catch(err => {
-    console.error('Referral failed:', err);
-  });
+    })
+    .catch(err => {
+      console.error('Referral failed:', err);
+    });
 
 }, [userId, userName]);
 
@@ -579,6 +602,39 @@ const startRetweetTask = () => {
 };
 
 const [friends, setFriends] = useState([]);
+
+// helper: refresh profile & friends from server
+const fetchProfileAndFriends = async (uid = userId) => {
+  if (!uid) return;
+  try {
+    // 1) profile
+    const pRes = await fetch(`/api/getProfile?userId=${encodeURIComponent(uid)}`);
+    if (pRes.ok) {
+      const { profile } = await pRes.json();
+      if (profile) {
+        setCoins(Number(profile.coins || 0));
+        if (profile.username) {
+          setUserName(profile.username);
+          localStorage.setItem('userName', profile.username);
+        }
+      }
+    } else {
+      console.warn('getProfile failed', await pRes.text());
+    }
+
+    // 2) friends
+    const fRes = await fetch(`/api/getFriends?userId=${encodeURIComponent(uid)}`);
+    if (fRes.ok) {
+      const { friends: serverFriends } = await fRes.json();
+      setFriends(serverFriends || []);
+    } else {
+      console.warn('getFriends failed', await fRes.text());
+    }
+  } catch (err) {
+    console.error('fetchProfileAndFriends error', err);
+  }
+};
+
 
 const handleCopyLink = async () => {
   const link = `https://t.me/Zapcoinnbot?startapp=${encodeURIComponent(userId)}`;
