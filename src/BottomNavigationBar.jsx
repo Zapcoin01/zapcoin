@@ -286,9 +286,25 @@ const [userName, setUserName] = useState('User');
 useEffect(() => {
   const tg = window.Telegram?.WebApp;
   if (tg) {
-    tg.ready();
+    try {
+      tg.ready();
+    } catch (e) {
+      console.warn('TG ready error', e);
+    }
+
     const user = tg.initDataUnsafe?.user;
-    const startParam = tg.initDataUnsafe?.start_param; // ← This is the referral ID!
+    // Primary way: Telegram should give you this
+    let startParam = tg.initDataUnsafe?.start_param || null;
+
+    // Fallback: URL query params (some clients pass here)
+    if (!startParam) {
+      const urlParams = new URLSearchParams(window.location.search);
+      startParam =
+        urlParams.get('startapp') ||
+        urlParams.get('tgWebAppStartParam') ||
+        urlParams.get('start') ||
+        null;
+    }
 
     if (user) {
       const tgId = user.id.toString();
@@ -306,12 +322,16 @@ useEffect(() => {
       }
     }
   } else {
-    const fallbackId = localStorage.getItem('userId') || Math.random().toString(36).substr(2, 9);
+    // Fallback if Telegram WebApp context not present
+    const fallbackId =
+      localStorage.getItem('userId') ||
+      Math.random().toString(36).substr(2, 9);
     setUserId(fallbackId);
     setUserName('Friend');
     localStorage.setItem('userId', fallbackId);
   }
 }, []);
+
 
 // Handle referral on load1
 useEffect(() => {
@@ -357,6 +377,7 @@ if (!referrerId) {
   });
 
 }, [userId, userName]);
+
 const handleCoinClick = (e) => {
 // Only vibrate if not already vibrating
   if (navigator.vibrate && !isVibrating) {
@@ -560,7 +581,7 @@ const startRetweetTask = () => {
 const [friends, setFriends] = useState([]);
 
 const handleCopyLink = async () => {
-  const link = `https://t.me/Zapcoinnbot/app?startapp=${userId}`;
+  const link = `https://t.me/Zapcoinnbot?startapp=${encodeURIComponent(userId)}`;
   try {
     await navigator.clipboard.writeText(link);
     setCopied(true);
@@ -571,7 +592,7 @@ const handleCopyLink = async () => {
 };
 
 const handleShareInvite = () => {
-  const link = `https://t.me/Zapcoinnbot/app?startapp=${userId}`;
+  const link = `https://t.me/Zapcoinnbot?startapp=${encodeURIComponent(userId)}`;
   const text = `Hey! Join me in Zapcoin and earn TON! ${link}`;
   const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`;
   window.open(shareUrl, '_blank');
@@ -1249,7 +1270,7 @@ ${coins >= getRechargingSpeedCost(rechargingSpeedLevel) ? 'cursor-pointer hover:
         {/* Link Card - No background, just border */}
         <div className="flex-1 border border-gray-700 rounded-lg p-4 bg-gray-900/50">
           <code className="text-sm text-gray-300 break-all block font-mono">
-            const link = `https://t.me/Zapcoinnbot/app?startapp=${userId}`;
+            const link = `https://t.me/Zapcoinnbot?startapp=${encodeURIComponent(userId)}`;
           </code>
         </div>
         
