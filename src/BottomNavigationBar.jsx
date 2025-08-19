@@ -385,16 +385,17 @@ useEffect(() => {
   })
     .then(res => res.json())
     .then(async data => {
-      if (data.success) {
-        // Refresh profile + friends to reflect DB changes
-        await fetchProfileAndFriends(userId);
-
-        // Optional: show a small notice to user
-        alert('Referral recorded — thanks for joining!');
-      } else {
-        console.warn('Referral API:', data);
-      }
-    })
+  if (data.success) {
+    // Refresh profile + friends to reflect DB changes
+    // Skip coin sync since referral already handled server coins
+    await fetchProfileAndFriends(userId, true);
+    
+    // Optional: show a small notice to user
+    alert('Referral recorded — thanks for joining!');
+  } else {
+    console.warn('Referral API:', data);
+  }
+})
     .catch(err => {
       console.error('Referral failed:', err);
     });
@@ -406,6 +407,38 @@ useEffect(() => {
     fetchProfileAndFriends(userId);
   }
 }, [activeTab, userId]);
+
+// Sync coins to server periodically
+useEffect(() => {
+  if (!userId) return;
+
+  const syncInterval = setInterval(() => {
+    const localCoins = parseInt(localStorage.getItem('coins') || '0');
+    if (localCoins > 0) {
+      console.log('Auto-syncing coins:', localCoins);
+      
+      fetch('/api/syncCoins', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          localCoins
+        })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          setCoins(data.newTotalCoins);
+          localStorage.setItem('coins', '0');
+          console.log('Auto-sync successful:', data);
+        }
+      })
+      .catch(err => console.error('Auto-sync failed:', err));
+    }
+  }, 30000); // Sync every 30 seconds
+
+  return () => clearInterval(syncInterval);
+}, [userId]);
 
 const handleCoinClick = (e) => {
 // Only vibrate if not already vibrating
@@ -609,7 +642,7 @@ const startRetweetTask = () => {
 
 const [friends, setFriends] = useState([]);
 
-const fetchProfileAndFriends = async (uid = userId) => {
+const fetchProfileAndFriends = async (uid = userId, skipCoinSync = false) => {
   if (!uid) {
     console.warn('No userId provided to fetchProfileAndFriends');
     return;
@@ -620,7 +653,37 @@ const fetchProfileAndFriends = async (uid = userId) => {
   try {
     console.log('Fetching profile and friends for user:', uid);
     
-    // 1) Fetch profile
+    // First, sync local coins to server (unless we're skipping)
+    if (!skipCoinSync) {
+      const localCoins = parseInt(localStorage.getItem('coins') || '0');
+      if (localCoins > 0) {
+        console.log('Syncing local coins to server:', localCoins);
+        
+        const syncRes = await fetch('/api/syncCoins', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: uid,
+            localCoins: localCoins
+          })
+        });
+
+        if (syncRes.ok) {
+          const syncData = await syncRes.json();
+          console.log('Coins synced successfully:', syncData);
+          
+          // Update local state with combined coins
+          setCoins(syncData.newTotalCoins);
+          
+          // Clear local coins since they're now on server
+          localStorage.setItem('coins', '0');
+        } else {
+          console.warn('Failed to sync coins:', await syncRes.text());
+        }
+      }
+    }
+    
+    // Then fetch updated profile
     const pRes = await fetch(`/api/getProfile?userId=${encodeURIComponent(uid)}`);
     if (pRes.ok) {
       const { profile } = await pRes.json();
@@ -637,7 +700,7 @@ const fetchProfileAndFriends = async (uid = userId) => {
       console.warn('getProfile failed:', pRes.status, errorText);
     }
 
-    // 2) Fetch friends
+    // Fetch friends
     const fRes = await fetch(`/api/getFriends?userId=${encodeURIComponent(uid)}`);
     if (fRes.ok) {
       const { friends: serverFriends } = await fRes.json();
