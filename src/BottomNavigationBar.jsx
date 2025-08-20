@@ -303,6 +303,7 @@ useEffect(() => {
 const [userId, setUserId] = useState(null);
 const [userName, setUserName] = useState('User');
 
+// Get Telegram user at startup - IMPROVED VERSION
 useEffect(() => {
   const tg = window.Telegram?.WebApp;
   if (tg) {
@@ -313,10 +314,8 @@ useEffect(() => {
     }
 
     const user = tg.initDataUnsafe?.user;
-    // Primary way: Telegram should give you this
     let startParam = tg.initDataUnsafe?.start_param || null;
 
-    // Fallback: URL query params (some clients pass here)
     if (!startParam) {
       const urlParams = new URLSearchParams(window.location.search);
       startParam =
@@ -335,12 +334,18 @@ useEffect(() => {
         `user_${tgId.slice(-6)}`;
 
       setUserId(tgId);
-      setUserName(username);
+      
+      // 🔥 KEY FIX: Only update username if we don't have one stored or if this is a better one
+      const storedUsername = localStorage.getItem('userName');
+      if (!storedUsername || storedUsername.startsWith('user_') || storedUsername === 'Friend') {
+        setUserName(username);
+        localStorage.setItem('userName', username);
+      } else {
+        setUserName(storedUsername); // Keep the existing good username
+      }
 
       localStorage.setItem('userId', tgId);
-      localStorage.setItem('userName', username);
 
-      // Save referral ID if present
       if (startParam) {
         localStorage.setItem('referrerId', startParam);
       }
@@ -350,9 +355,14 @@ useEffect(() => {
     const fallbackId =
       localStorage.getItem('userId') ||
       Math.random().toString(36).substr(2, 9);
+    const storedUsername = localStorage.getItem('userName');
+    
     setUserId(fallbackId);
-    setUserName('Friend');
-    localStorage.setItem('userId', fallbackId);
+    setUserName(storedUsername || 'Friend'); // Use stored username if available
+    
+    if (!localStorage.getItem('userId')) {
+      localStorage.setItem('userId', fallbackId);
+    }
   }
 }, []);
 
@@ -682,10 +692,7 @@ const fetchProfileAndFriends = async (uid = userId, skipCoinSync = false) => {
           const syncData = await syncRes.json();
           console.log('Coins synced successfully:', syncData);
           
-          // Update local state with combined coins
           setCoins(syncData.newTotalCoins);
-          
-          // Clear local coins since they're now on server
           localStorage.setItem('coins', '0');
         } else {
           console.warn('Failed to sync coins:', await syncRes.text());
@@ -700,7 +707,11 @@ const fetchProfileAndFriends = async (uid = userId, skipCoinSync = false) => {
       console.log('Profile fetched:', profile);
       if (profile) {
         setCoins(Number(profile.coins || 0));
-        if (profile.username) {
+        
+        // 🔥 KEY FIX: Only update username if we get a better one
+        if (profile.username && 
+            profile.username !== 'Friend' && 
+            !profile.username.startsWith('user_')) {
           setUserName(profile.username);
           localStorage.setItem('userName', profile.username);
         }
@@ -715,8 +726,6 @@ const fetchProfileAndFriends = async (uid = userId, skipCoinSync = false) => {
       const { friends: serverFriends } = await fRes.json();
       console.log('Friends fetched:', serverFriends);
       setFriends(serverFriends || []);
-      
-      // Mark friends as loaded after successful fetch
       setFriendsLoaded(true);
     } else {
       const errorText = await fRes.text();

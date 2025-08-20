@@ -1,11 +1,4 @@
-// api/getFriends.js
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
-
+// api/getFriends.js - IMPROVED VERSION
 export default async function handler(req, res) {
   const { userId } = req.query;
 
@@ -50,11 +43,22 @@ export default async function handler(req, res) {
       });
     }
 
-    // Format the friends data
-    const friends = profiles.map(profile => ({
-      id: profile.tg_id,
-      username: profile.username || `user_${profile.tg_id.slice(-6)}`
-    }));
+    // 🔥 KEY FIX: Better username fallback handling
+    const friends = profiles.map(profile => {
+      let displayUsername = profile.username;
+      
+      // If username is null, undefined, or a generic fallback, create a better one
+      if (!displayUsername || 
+          displayUsername === 'Friend' || 
+          displayUsername.startsWith('user_')) {
+        displayUsername = `friend_${profile.tg_id.slice(-6)}`;
+      }
+      
+      return {
+        id: profile.tg_id,
+        username: displayUsername
+      };
+    });
 
     return res.status(200).json({ friends });
 
