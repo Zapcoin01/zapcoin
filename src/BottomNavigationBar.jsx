@@ -735,8 +735,7 @@ const handleCopyLink = async () => {
 };
 
 const handleRefreshFriends = () => {
-  if (userId && !isLoadingFriends) {
-    console.log('Manual refresh triggered');
+  if (userId) {
     fetchProfileAndFriends(userId);
   }
 };
