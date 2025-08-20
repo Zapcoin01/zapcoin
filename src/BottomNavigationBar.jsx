@@ -1452,7 +1452,7 @@ ${coins >= getRechargingSpeedCost(rechargingSpeedLevel) ? 'cursor-pointer hover:
 
     {/* Your Friends List */}
     <div className="mb-8">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-center mb-4">
   <div className="flex items-center gap-2">
     <Users className="text-white" size={20} />
     <h3 className="text-white text-xl font-bold">Your Friends</h3>
@@ -1460,42 +1460,9 @@ ${coins >= getRechargingSpeedCost(rechargingSpeedLevel) ? 'cursor-pointer hover:
       {friends.length}
     </span>
   </div>
-  
-  {/* Show different buttons based on state */}
-  {!friendsLoaded ? (
-    <button
-      onClick={() => fetchProfileAndFriends(userId)}
-      disabled={isLoadingFriends}
-      className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 disabled:opacity-50"
-    >
-      {isLoadingFriends ? 'Loading...' : 'Load Friends'}
-    </button>
-  ) : (
-    <button
-      onClick={handleRefreshFriends}
-      disabled={isLoadingFriends}
-      className="bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-lg transition-colors duration-200 disabled:opacity-50"
-      title="Refresh friends list"
-    >
-      <div className={`w-4 h-4 ${isLoadingFriends ? 'animate-spin' : ''}`}>
-        🔄
-      </div>
-    </button>
-  )}
 </div>
-      
       <div className="max-h-60 overflow-y-auto space-y-3 pr-2">
-  {!friendsLoaded && !isLoadingFriends ? (
-    <div className="text-center py-8">
-      <Users className="mx-auto mb-3 text-gray-600" size={48} />
-      <p className="text-gray-500 text-sm">Click "Load Friends" to see your referrals</p>
-    </div>
-  ) : isLoadingFriends ? (
-    <div className="text-center py-8">
-      <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-      <p className="text-gray-400 text-sm">Loading friends...</p>
-    </div>
-  ) : friends.length === 0 ? (
+  {friends.length === 0 ? (
     <div className="text-center py-8">
       <Users className="mx-auto mb-3 text-gray-600" size={48} />
       <p className="text-gray-500 text-sm">No friends joined yet</p>
