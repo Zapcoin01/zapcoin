@@ -138,7 +138,15 @@ useEffect(() => {
   }
 }, [coins, leagueName]);
 
-const [friendsLoaded, setFriendsLoaded] = useState(false);
+const [friends, setFriends] = useState(() => {
+  const saved = localStorage.getItem('friends');
+  return saved ? JSON.parse(saved) : [];
+});
+
+const [friendsLoaded, setFriendsLoaded] = useState(() => {
+  const saved = localStorage.getItem('friendsLoaded');
+  return saved === 'true';
+});
 
 // Energy regeneration - Fixed for offline calculation
 useEffect(() => {
@@ -266,6 +274,14 @@ useEffect(() => {
 useEffect(() => {
   localStorage.setItem('lastEnergyTime', Date.now().toString());
 }, [energy])
+
+useEffect(() => {
+  localStorage.setItem('friends', JSON.stringify(friends));
+}, [friends]);
+
+useEffect(() => {
+  localStorage.setItem('friendsLoaded', friendsLoaded.toString());
+}, [friendsLoaded]);
 
 // ✅ Cleanup timers on unmount
 useEffect(() => {
@@ -403,13 +419,6 @@ useEffect(() => {
     });
 
 }, [userId, userName]);
-
-useEffect(() => {
-  // Only fetch friends when switching to friends tab AND friends haven't been loaded yet
-  if (activeTab === 'friends' && userId && !friendsLoaded) {
-    fetchProfileAndFriends(userId);
-  }
-}, [activeTab, userId, friendsLoaded]);
 
 // Sync coins to server periodically
 useEffect(() => {
@@ -642,8 +651,6 @@ const startRetweetTask = () => {
     taskTimersRef.current.retweet = null;
   }, 10000);
 };
-
-const [friends, setFriends] = useState([]);
 
 const fetchProfileAndFriends = async (uid = userId, skipCoinSync = false) => {
   if (!uid) {
@@ -1446,61 +1453,76 @@ ${coins >= getRechargingSpeedCost(rechargingSpeedLevel) ? 'cursor-pointer hover:
     {/* Your Friends List */}
     <div className="mb-8">
       <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Users className="text-white" size={20} />
-          <h3 className="text-white text-xl font-bold">Your Friends</h3>
-          <span className="bg-blue-600 text-white text-xs px-2 py-1 rounded-full font-medium">
-            {friends.length}
-          </span>
-        </div>
-        
-        {/* Refresh Button */}
-        <button
-          onClick={handleRefreshFriends}
-          disabled={isLoadingFriends}
-          className="bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-lg transition-colors duration-200 disabled:opacity-50"
-          title="Refresh friends list"
-        >
-          <div className={`w-4 h-4 ${isLoadingFriends ? 'animate-spin' : ''}`}>
-            🔄
-          </div>
-        </button>
+  <div className="flex items-center gap-2">
+    <Users className="text-white" size={20} />
+    <h3 className="text-white text-xl font-bold">Your Friends</h3>
+    <span className="bg-blue-600 text-white text-xs px-2 py-1 rounded-full font-medium">
+      {friends.length}
+    </span>
+  </div>
+  
+  {/* Show different buttons based on state */}
+  {!friendsLoaded ? (
+    <button
+      onClick={() => fetchProfileAndFriends(userId)}
+      disabled={isLoadingFriends}
+      className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 disabled:opacity-50"
+    >
+      {isLoadingFriends ? 'Loading...' : 'Load Friends'}
+    </button>
+  ) : (
+    <button
+      onClick={handleRefreshFriends}
+      disabled={isLoadingFriends}
+      className="bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-lg transition-colors duration-200 disabled:opacity-50"
+      title="Refresh friends list"
+    >
+      <div className={`w-4 h-4 ${isLoadingFriends ? 'animate-spin' : ''}`}>
+        🔄
       </div>
+    </button>
+  )}
+</div>
       
       <div className="max-h-60 overflow-y-auto space-y-3 pr-2">
-        {isLoadingFriends ? (
-          <div className="text-center py-8">
-            <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-            <p className="text-gray-400 text-sm">Loading friends...</p>
-          </div>
-        ) : friends.length === 0 ? (
-          <div className="text-center py-8">
-            <Users className="mx-auto mb-3 text-gray-600" size={48} />
-            <p className="text-gray-500 text-sm">No friends joined yet</p>
-            <p className="text-gray-600 text-xs mt-1">
-              Share your link to get started!
-            </p>
-          </div>
-        ) : (
-          friends.map((friend, index) => (
-            <div 
-              key={friend.id || index} 
-              className="flex items-center gap-3 bg-gray-800/60 hover:bg-gray-800/80 p-3 rounded-lg transition-colors duration-200 border border-gray-700/50"
-            >
-              <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-lg">
-                {friend.username.charAt(0).toUpperCase()}
-              </div>
-              <span className="text-white font-medium flex-1">
-                @{friend.username}
-              </span>
-              <div className="text-right">
-                <span className="text-yellow-400 font-bold text-sm">+10,000</span>
-                <p className="text-gray-500 text-xs">coins</p>
-              </div>
-            </div>
-          ))
-        )}
+  {!friendsLoaded && !isLoadingFriends ? (
+    <div className="text-center py-8">
+      <Users className="mx-auto mb-3 text-gray-600" size={48} />
+      <p className="text-gray-500 text-sm">Click "Load Friends" to see your referrals</p>
+    </div>
+  ) : isLoadingFriends ? (
+    <div className="text-center py-8">
+      <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+      <p className="text-gray-400 text-sm">Loading friends...</p>
+    </div>
+  ) : friends.length === 0 ? (
+    <div className="text-center py-8">
+      <Users className="mx-auto mb-3 text-gray-600" size={48} />
+      <p className="text-gray-500 text-sm">No friends joined yet</p>
+      <p className="text-gray-600 text-xs mt-1">
+        Share your link to get started!
+      </p>
+    </div>
+  ) : (
+    friends.map((friend, index) => (
+      <div 
+        key={friend.id || index} 
+        className="flex items-center gap-3 bg-gray-800/60 hover:bg-gray-800/80 p-3 rounded-lg transition-colors duration-200 border border-gray-700/50"
+      >
+        <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-lg">
+          {friend.username.charAt(0).toUpperCase()}
+        </div>
+        <span className="text-white font-medium flex-1">
+          @{friend.username}
+        </span>
+        <div className="text-right">
+          <span className="text-yellow-400 font-bold text-sm">+10,000</span>
+          <p className="text-gray-500 text-xs">coins</p>
+        </div>
       </div>
+    ))
+  )}
+</div>
     </div>
 
     {/* Share Button */}
