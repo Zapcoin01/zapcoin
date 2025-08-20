@@ -138,8 +138,6 @@ useEffect(() => {
   }
 }, [coins, leagueName]);
 
-const [friendsLoaded, setFriendsLoaded] = useState(false);
-
 // Energy regeneration - Fixed for offline calculation
 useEffect(() => {
   // First, check for offline regeneration
@@ -405,11 +403,10 @@ useEffect(() => {
 }, [userId, userName]);
 
 useEffect(() => {
-  // Only fetch friends when switching to friends tab AND friends haven't been loaded yet
-  if (activeTab === 'friends' && userId && !friendsLoaded) {
+  if (activeTab === 'friends' && userId) {
     fetchProfileAndFriends(userId);
   }
-}, [activeTab, userId, friendsLoaded]);
+}, [activeTab, userId]);
 
 // Sync coins to server periodically
 useEffect(() => {
@@ -703,14 +700,12 @@ const fetchProfileAndFriends = async (uid = userId, skipCoinSync = false) => {
       console.warn('getProfile failed:', pRes.status, errorText);
     }
 
+    // Fetch friends
     const fRes = await fetch(`/api/getFriends?userId=${encodeURIComponent(uid)}`);
     if (fRes.ok) {
       const { friends: serverFriends } = await fRes.json();
       console.log('Friends fetched:', serverFriends);
       setFriends(serverFriends || []);
-      
-      // Mark friends as loaded after successful fetch
-      setFriendsLoaded(true);
     } else {
       const errorText = await fRes.text();
       console.warn('getFriends failed:', fRes.status, errorText);
