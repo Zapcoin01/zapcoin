@@ -138,15 +138,7 @@ useEffect(() => {
   }
 }, [coins, leagueName]);
 
-const [friends, setFriends] = useState(() => {
-  const saved = localStorage.getItem('friends');
-  return saved ? JSON.parse(saved) : [];
-});
-
-const [friendsLoaded, setFriendsLoaded] = useState(() => {
-  const saved = localStorage.getItem('friendsLoaded');
-  return saved === 'true';
-});
+const [friendsLoaded, setFriendsLoaded] = useState(false);
 
 // Energy regeneration - Fixed for offline calculation
 useEffect(() => {
@@ -275,14 +267,6 @@ useEffect(() => {
   localStorage.setItem('lastEnergyTime', Date.now().toString());
 }, [energy])
 
-useEffect(() => {
-  localStorage.setItem('friends', JSON.stringify(friends));
-}, [friends]);
-
-useEffect(() => {
-  localStorage.setItem('friendsLoaded', friendsLoaded.toString());
-}, [friendsLoaded]);
-
 // ✅ Cleanup timers on unmount
 useEffect(() => {
   // Capture the ref at effect setup time
@@ -303,7 +287,6 @@ useEffect(() => {
 const [userId, setUserId] = useState(null);
 const [userName, setUserName] = useState('User');
 
-// Get Telegram user at startup - IMPROVED VERSION
 useEffect(() => {
   const tg = window.Telegram?.WebApp;
   if (tg) {
@@ -314,8 +297,10 @@ useEffect(() => {
     }
 
     const user = tg.initDataUnsafe?.user;
+    // Primary way: Telegram should give you this
     let startParam = tg.initDataUnsafe?.start_param || null;
 
+    // Fallback: URL query params (some clients pass here)
     if (!startParam) {
       const urlParams = new URLSearchParams(window.location.search);
       startParam =
@@ -334,18 +319,12 @@ useEffect(() => {
         `user_${tgId.slice(-6)}`;
 
       setUserId(tgId);
-      
-      // 🔥 KEY FIX: Only update username if we don't have one stored or if this is a better one
-      const storedUsername = localStorage.getItem('userName');
-      if (!storedUsername || storedUsername.startsWith('user_') || storedUsername === 'Friend') {
-        setUserName(username);
-        localStorage.setItem('userName', username);
-      } else {
-        setUserName(storedUsername); // Keep the existing good username
-      }
+      setUserName(username);
 
       localStorage.setItem('userId', tgId);
+      localStorage.setItem('userName', username);
 
+      // Save referral ID if present
       if (startParam) {
         localStorage.setItem('referrerId', startParam);
       }
@@ -355,14 +334,9 @@ useEffect(() => {
     const fallbackId =
       localStorage.getItem('userId') ||
       Math.random().toString(36).substr(2, 9);
-    const storedUsername = localStorage.getItem('userName');
-    
     setUserId(fallbackId);
-    setUserName(storedUsername || 'Friend'); // Use stored username if available
-    
-    if (!localStorage.getItem('userId')) {
-      localStorage.setItem('userId', fallbackId);
-    }
+    setUserName('Friend');
+    localStorage.setItem('userId', fallbackId);
   }
 }, []);
 
@@ -429,6 +403,13 @@ useEffect(() => {
     });
 
 }, [userId, userName]);
+
+useEffect(() => {
+  // Only fetch friends when switching to friends tab AND friends haven't been loaded yet
+  if (activeTab === 'friends' && userId && !friendsLoaded) {
+    fetchProfileAndFriends(userId);
+  }
+}, [activeTab, userId, friendsLoaded]);
 
 // Sync coins to server periodically
 useEffect(() => {
@@ -662,6 +643,8 @@ const startRetweetTask = () => {
   }, 10000);
 };
 
+const [friends, setFriends] = useState([]);
+
 const fetchProfileAndFriends = async (uid = userId, skipCoinSync = false) => {
   if (!uid) {
     console.warn('No userId provided to fetchProfileAndFriends');
@@ -692,7 +675,10 @@ const fetchProfileAndFriends = async (uid = userId, skipCoinSync = false) => {
           const syncData = await syncRes.json();
           console.log('Coins synced successfully:', syncData);
           
+          // Update local state with combined coins
           setCoins(syncData.newTotalCoins);
+          
+          // Clear local coins since they're now on server
           localStorage.setItem('coins', '0');
         } else {
           console.warn('Failed to sync coins:', await syncRes.text());
@@ -707,11 +693,7 @@ const fetchProfileAndFriends = async (uid = userId, skipCoinSync = false) => {
       console.log('Profile fetched:', profile);
       if (profile) {
         setCoins(Number(profile.coins || 0));
-        
-        // 🔥 KEY FIX: Only update username if we get a better one
-        if (profile.username && 
-            profile.username !== 'Friend' && 
-            !profile.username.startsWith('user_')) {
+        if (profile.username) {
           setUserName(profile.username);
           localStorage.setItem('userName', profile.username);
         }
@@ -726,6 +708,8 @@ const fetchProfileAndFriends = async (uid = userId, skipCoinSync = false) => {
       const { friends: serverFriends } = await fRes.json();
       console.log('Friends fetched:', serverFriends);
       setFriends(serverFriends || []);
+      
+      // Mark friends as loaded after successful fetch
       setFriendsLoaded(true);
     } else {
       const errorText = await fRes.text();
@@ -1461,44 +1445,62 @@ ${coins >= getRechargingSpeedCost(rechargingSpeedLevel) ? 'cursor-pointer hover:
 
     {/* Your Friends List */}
     <div className="mb-8">
-      <div className="flex items-center justify-center mb-4">
-  <div className="flex items-center gap-2">
-    <Users className="text-white" size={20} />
-    <h3 className="text-white text-xl font-bold">Your Friends</h3>
-    <span className="bg-blue-600 text-white text-xs px-2 py-1 rounded-full font-medium">
-      {friends.length}
-    </span>
-  </div>
-</div>
-      <div className="max-h-60 overflow-y-auto space-y-3 pr-2">
-  {friends.length === 0 ? (
-    <div className="text-center py-8">
-      <Users className="mx-auto mb-3 text-gray-600" size={48} />
-      <p className="text-gray-500 text-sm">No friends joined yet</p>
-      <p className="text-gray-600 text-xs mt-1">
-        Share your link to get started!
-      </p>
-    </div>
-  ) : (
-    friends.map((friend, index) => (
-      <div 
-        key={friend.id || index} 
-        className="flex items-center gap-3 bg-gray-800/60 hover:bg-gray-800/80 p-3 rounded-lg transition-colors duration-200 border border-gray-700/50"
-      >
-        <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-lg">
-          {friend.username.charAt(0).toUpperCase()}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Users className="text-white" size={20} />
+          <h3 className="text-white text-xl font-bold">Your Friends</h3>
+          <span className="bg-blue-600 text-white text-xs px-2 py-1 rounded-full font-medium">
+            {friends.length}
+          </span>
         </div>
-        <span className="text-white font-medium flex-1">
-          @{friend.username}
-        </span>
-        <div className="text-right">
-          <span className="text-yellow-400 font-bold text-sm">+10,000</span>
-          <p className="text-gray-500 text-xs">coins</p>
-        </div>
+        
+        {/* Refresh Button */}
+        <button
+          onClick={handleRefreshFriends}
+          disabled={isLoadingFriends}
+          className="bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-lg transition-colors duration-200 disabled:opacity-50"
+          title="Refresh friends list"
+        >
+          <div className={`w-4 h-4 ${isLoadingFriends ? 'animate-spin' : ''}`}>
+            🔄
+          </div>
+        </button>
       </div>
-    ))
-  )}
-</div>
+      
+      <div className="max-h-60 overflow-y-auto space-y-3 pr-2">
+        {isLoadingFriends ? (
+          <div className="text-center py-8">
+            <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+            <p className="text-gray-400 text-sm">Loading friends...</p>
+          </div>
+        ) : friends.length === 0 ? (
+          <div className="text-center py-8">
+            <Users className="mx-auto mb-3 text-gray-600" size={48} />
+            <p className="text-gray-500 text-sm">No friends joined yet</p>
+            <p className="text-gray-600 text-xs mt-1">
+              Share your link to get started!
+            </p>
+          </div>
+        ) : (
+          friends.map((friend, index) => (
+            <div 
+              key={friend.id || index} 
+              className="flex items-center gap-3 bg-gray-800/60 hover:bg-gray-800/80 p-3 rounded-lg transition-colors duration-200 border border-gray-700/50"
+            >
+              <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-lg">
+                {friend.username.charAt(0).toUpperCase()}
+              </div>
+              <span className="text-white font-medium flex-1">
+                @{friend.username}
+              </span>
+              <div className="text-right">
+                <span className="text-yellow-400 font-bold text-sm">+10,000</span>
+                <p className="text-gray-500 text-xs">coins</p>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
     </div>
 
     {/* Share Button */}
