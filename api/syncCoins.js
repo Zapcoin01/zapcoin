@@ -18,14 +18,13 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Get current server coins
     const { data: profile, error: fetchError } = await supabase
       .from('profiles')
       .select('coins')
       .eq('tg_id', userId)
       .single();
 
-    if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 = not found
+    if (fetchError && fetchError.code !== 'PGRST116') {
       console.error('Error fetching profile:', fetchError);
       return res.status(500).json({ error: 'Failed to fetch profile' });
     }
@@ -33,26 +32,27 @@ export default async function handler(req, res) {
     const serverCoins = profile?.coins || 0;
     const newTotalCoins = serverCoins + parseInt(localCoins);
 
-    // Update server with combined coins
-    const { error: updateError } = await supabase
-      .from('profiles')
-      .upsert({
-        tg_id: userId,
-        coins: newTotalCoins
-      });
+    // Only update if there's a change
+    if (newTotalCoins !== serverCoins) {
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .upsert({
+          tg_id: userId,
+          coins: newTotalCoins
+        });
 
-    if (updateError) {
-      console.error('Error updating coins:', updateError);
-      return res.status(500).json({ error: 'Failed to update coins' });
+      if (updateError) {
+        console.error('Error updating coins:', updateError);
+        return res.status(500).json({ error: 'Failed to update coins' });
+      }
     }
 
-    return res.status(200).json({ 
-      success: true, 
+    return res.status(200).json({
+      success: true,
       newTotalCoins,
       serverCoins,
-      localCoins: parseInt(localCoins)
+      syncedCoins: newTotalCoins - serverCoins,
     });
-
   } catch (error) {
     console.error('Sync coins error:', error);
     return res.status(500).json({ error: 'Internal server error' });

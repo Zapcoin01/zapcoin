@@ -62,6 +62,11 @@ const energyPerClick = 1;
 const [adsWatched, setAdsWatched] = useState(0);
 // We'll read lastAdTime from localStorage when needed, no need for state
 
+const [lastSyncTime, setLastSyncTime] = useState(() => {
+  const saved = localStorage.getItem('lastSyncTime');
+  return saved ? parseInt(saved) : Date.now();
+});
+
 const [taskStatus, setTaskStatus] = useState({
   followX: 'idle',
   joinTelegram: 'idle',
@@ -188,6 +193,7 @@ useEffect(() => {
   const storedAds = localStorage.getItem('adsWatched');
   const storedTappingGuru = localStorage.getItem('tappingGuruUses');
   const storedFullTank = localStorage.getItem('fullTankUses');
+  const storedLastSyncTime = localStorage.getItem('lastSyncTime'); // ✅ ADD THIS LINE
 
   const now = Date.now();
 
@@ -220,6 +226,11 @@ useEffect(() => {
     setAdsWatched(0);
     setTappingGuruUses(3);
     setFullTankUses(3);
+  }
+
+  // ✅ Restore last sync time
+  if (storedLastSyncTime) {
+    setLastSyncTime(parseInt(storedLastSyncTime));
   }
 
   // ✅ Load task status from localStorage
@@ -412,28 +423,35 @@ useEffect(() => {
 useEffect(() => {
   if (!userId) return;
 
-  const syncInterval = setInterval(() => {
-    const localCoins = parseInt(localStorage.getItem('coins') || '0');
-    if (localCoins > 0) {
-      console.log('Auto-syncing coins:', localCoins);
-      
-      fetch('/api/syncCoins', {
+  const syncInterval = setInterval(async () => {
+    const now = Date.now();
+    const localCoinsRaw = localStorage.getItem('coins');
+    const localCoins = localCoinsRaw ? parseInt(localCoinsRaw) || 0 : 0;
+
+    // Only sync if we have coins AND time has passed
+    if (localCoins <= 0) return;
+
+    console.log('Auto-syncing coins:', localCoins);
+    try {
+      const response = await fetch('/api/syncCoins', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId,
           localCoins
         })
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (data.success) {
-          setCoins(data.newTotalCoins);
-          localStorage.setItem('coins', '0');
-          console.log('Auto-sync successful:', data);
-        }
-      })
-      .catch(err => console.error('Auto-sync failed:', err));
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setCoins(data.newTotalCoins);
+        localStorage.setItem('coins', '0'); // Reset local earnings
+        setLastSyncTime(now);               // Mark sync time
+        localStorage.setItem('lastSyncTime', now.toString());
+        console.log('Auto-sync successful:', data);
+      }
+    } catch (err) {
+      console.error('Auto-sync failed:', err);
     }
   }, 30000); // Sync every 30 seconds
 
