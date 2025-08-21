@@ -18,7 +18,20 @@ export default async function handler(req, res) {
       .maybeSingle();
 
     if (error) throw error;
-    return res.status(200).json({ profile: data || null });
+    
+    // ✅ FIX: Create user if doesn't exist
+    if (!data) {
+      const { data: newUser, error: createError } = await supabase
+        .from('profiles')
+        .insert({ tg_id: userId, username: `user_${userId.slice(-6)}`, coins: 0 })
+        .select()
+        .single();
+        
+      if (createError) throw createError;
+      return res.status(200).json({ profile: newUser });
+    }
+    
+    return res.status(200).json({ profile: data });
   } catch (error) {
     console.error('getProfile error', error);
     return res.status(500).json({ error: 'Internal server error', details: error.message });
