@@ -692,51 +692,54 @@ const fetchProfileAndFriends = async (uid = userId, skipCoinSync = false) => {
   try {
     console.log('Fetching profile and friends for user:', uid);
     
-    // Only sync coins if explicitly allowed
-if (!skipCoinSync) {
-  const localCoins = parseInt(localStorage.getItem('coins') || '0');
-  if (localCoins > 0) {
-    console.log('Syncing local coins to server:', localCoins);
-    try {
-      const syncRes = await fetch('/api/syncCoins', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: uid, localCoins }),
-      });
-
-      if (syncRes.ok) {
-        const syncData = await syncRes.json();
-        console.log('Coins synced successfully:', syncData);
-
-        // 🔥 ONLY update frontend coins IF we trust the server total
-        // BUT do NOT override if user has been tapping during sync
-        const currentLocalCoins = parseInt(localStorage.getItem('coins') || '0');
-        if (currentLocalCoins === 0) {
-          // No new taps during sync → safe to update
-          setCoins(syncData.newTotalCoins);
-        } else {
-          // User tapped during sync → keep local + server
-          setCoins(syncData.newTotalCoins + currentLocalCoins);
-        }
-
-        // Always clear only the synced amount
-        localStorage.setItem('coins', '0');
-      } else {
-        console.warn('Failed to sync coins:', await syncRes.text());
-      }
-    } catch (err) {
-      console.error('Sync failed:', err);
-    }
-  }
-}
+    // Store current local coins before any server calls
+    const currentLocalCoins = parseInt(localStorage.getItem('coins') || '0');
     
-    // Then fetch updated profile
+    // Only sync coins if explicitly allowed
+    if (!skipCoinSync && currentLocalCoins > 0) {
+      console.log('Syncing local coins to server:', currentLocalCoins);
+      try {
+        const syncRes = await fetch('/api/syncCoins', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: uid, localCoins: currentLocalCoins }),
+        });
+
+        if (syncRes.ok) {
+          const syncData = await syncRes.json();
+          console.log('Coins synced successfully:', syncData);
+
+          // Update state with new server total + any new taps during sync
+          const newLocalCoins = parseInt(localStorage.getItem('coins') || '0');
+          setCoins(syncData.newTotalCoins + newLocalCoins);
+          localStorage.setItem('coins', '0');
+        } else {
+          console.warn('Failed to sync coins:', await syncRes.text());
+        }
+      } catch (err) {
+        console.error('Sync failed:', err);
+      }
+    }
+    
+    // Fetch updated profile
     const pRes = await fetch(`/api/getProfile?userId=${encodeURIComponent(uid)}`);
     if (pRes.ok) {
       const { profile } = await pRes.json();
       console.log('Profile fetched:', profile);
       if (profile) {
-        setCoins(Number(profile.coins || 0));
+        // ⭐ CRITICAL FIX: Don't overwrite coins if we have unsaved local changes
+        const latestLocalCoins = parseInt(localStorage.getItem('coins') || '0');
+        
+        if (latestLocalCoins > 0) {
+          // We have unsaved taps - add them to server total
+          console.log('Preserving local coins:', latestLocalCoins, 'Server coins:', profile.coins);
+          setCoins(Number(profile.coins || 0) + latestLocalCoins);
+        } else if (!skipCoinSync) {
+          // No local changes and we synced - use server total
+          setCoins(Number(profile.coins || 0));
+        }
+        // If skipCoinSync=true and no local coins, don't touch coin state at all
+        
         if (profile.username) {
           setUserName(profile.username);
           localStorage.setItem('userName', profile.username);
