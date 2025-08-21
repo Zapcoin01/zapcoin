@@ -11,7 +11,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { userId, localCoins } = req.body;
+  const { userId, localCoins, clientTime } = req.body;
 
   if (!userId || localCoins === undefined) {
     return res.status(400).json({ error: 'Missing userId or localCoins' });
@@ -20,7 +20,7 @@ export default async function handler(req, res) {
   try {
     const { data: profile, error: fetchError } = await supabase
       .from('profiles')
-      .select('coins')
+      .select('coins, last_sync_time')
       .eq('tg_id', userId)
       .single();
 
@@ -30,15 +30,29 @@ export default async function handler(req, res) {
     }
 
     const serverCoins = profile?.coins || 0;
+    const lastSyncTime = profile?.last_sync_time ? new Date(profile.last_sync_time).getTime() : 0;
+    const now = Date.now();
+
+    // Optional: Reject very old syncs
+    if (clientTime && lastSyncTime >= clientTime) {
+      // This sync is outdated
+      return res.status(200).json({
+        success: true,
+        newTotalCoins: serverCoins,
+        syncedCoins: 0,
+        message: 'Sync already processed',
+      });
+    }
+
     const newTotalCoins = serverCoins + parseInt(localCoins);
 
-    // Only update if there's a change
     if (newTotalCoins !== serverCoins) {
       const { error: updateError } = await supabase
         .from('profiles')
         .upsert({
           tg_id: userId,
-          coins: newTotalCoins
+          coins: newTotalCoins,
+          last_sync_time: new Date().toISOString(),
         });
 
       if (updateError) {

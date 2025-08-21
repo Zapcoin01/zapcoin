@@ -274,7 +274,7 @@ useEffect(() => {
 
 useEffect(() => {
   localStorage.setItem('lastEnergyTime', Date.now().toString());
-}, [energy])
+}, [energy]);
 
 // ✅ Cleanup timers on unmount
 useEffect(() => {
@@ -295,6 +295,7 @@ useEffect(() => {
 // Get Telegram user at startup
 const [userId, setUserId] = useState(null);
 const [userName, setUserName] = useState('User');
+const isSyncingRef = useRef(false);
 
 useEffect(() => {
   const tg = window.Telegram?.WebApp;
@@ -414,8 +415,11 @@ useEffect(() => {
 }, [userId, userName]);
 
 useEffect(() => {
-  if (activeTab === 'friends' && userId) {
-    fetchProfileAndFriends(userId);
+  if (userId) {
+    if (activeTab === 'friends') {
+      // Just fetch data — do NOT sync coins again
+      fetchProfileAndFriends(userId, true); // ← skipCoinSync = true
+    }
   }
 }, [activeTab, userId]);
 
@@ -424,36 +428,40 @@ useEffect(() => {
   if (!userId) return;
 
   const syncInterval = setInterval(async () => {
+    if (isSyncingRef.current) return;
+    isSyncingRef.current = true;
+
     const now = Date.now();
     const localCoinsRaw = localStorage.getItem('coins');
     const localCoins = localCoinsRaw ? parseInt(localCoinsRaw) || 0 : 0;
 
-    // Only sync if we have coins AND time has passed
-    if (localCoins <= 0) return;
+    if (localCoins <= 0) {
+      isSyncingRef.current = false;
+      return;
+    }
 
     console.log('Auto-syncing coins:', localCoins);
     try {
       const response = await fetch('/api/syncCoins', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId,
-          localCoins
-        })
+        body: JSON.stringify({ userId, localCoins }),
       });
 
       const data = await response.json();
       if (data.success) {
         setCoins(data.newTotalCoins);
-        localStorage.setItem('coins', '0'); // Reset local earnings
-        setLastSyncTime(now);               // Mark sync time
+        localStorage.setItem('coins', '0');
+        setLastSyncTime(now);
         localStorage.setItem('lastSyncTime', now.toString());
         console.log('Auto-sync successful:', data);
       }
     } catch (err) {
       console.error('Auto-sync failed:', err);
+    } finally {
+      isSyncingRef.current = false; // 🔓 Release lock
     }
-  }, 30000); // Sync every 30 seconds
+  }, 30000); // Every 30 seconds
 
   return () => clearInterval(syncInterval);
 }, [userId]);
@@ -671,35 +679,43 @@ const fetchProfileAndFriends = async (uid = userId, skipCoinSync = false) => {
   try {
     console.log('Fetching profile and friends for user:', uid);
     
-    // First, sync local coins to server (unless we're skipping)
-    if (!skipCoinSync) {
-      const localCoins = parseInt(localStorage.getItem('coins') || '0');
-      if (localCoins > 0) {
-        console.log('Syncing local coins to server:', localCoins);
-        
-        const syncRes = await fetch('/api/syncCoins', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: uid,
-            localCoins: localCoins
-          })
-        });
+    // Only sync coins if explicitly allowed
+if (!skipCoinSync) {
+  const localCoins = parseInt(localStorage.getItem('coins') || '0');
+  if (localCoins > 0) {
+    console.log('Syncing local coins to server:', localCoins);
+    try {
+      const syncRes = await fetch('/api/syncCoins', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: uid, localCoins }),
+      });
 
-        if (syncRes.ok) {
-          const syncData = await syncRes.json();
-          console.log('Coins synced successfully:', syncData);
-          
-          // Update local state with combined coins
+      if (syncRes.ok) {
+        const syncData = await syncRes.json();
+        console.log('Coins synced successfully:', syncData);
+
+        // 🔥 ONLY update frontend coins IF we trust the server total
+        // BUT do NOT override if user has been tapping during sync
+        const currentLocalCoins = parseInt(localStorage.getItem('coins') || '0');
+        if (currentLocalCoins === 0) {
+          // No new taps during sync → safe to update
           setCoins(syncData.newTotalCoins);
-          
-          // Clear local coins since they're now on server
-          localStorage.setItem('coins', '0');
         } else {
-          console.warn('Failed to sync coins:', await syncRes.text());
+          // User tapped during sync → keep local + server
+          setCoins(syncData.newTotalCoins + currentLocalCoins);
         }
+
+        // Always clear only the synced amount
+        localStorage.setItem('coins', '0');
+      } else {
+        console.warn('Failed to sync coins:', await syncRes.text());
       }
+    } catch (err) {
+      console.error('Sync failed:', err);
     }
+  }
+}
     
     // Then fetch updated profile
     const pRes = await fetch(`/api/getProfile?userId=${encodeURIComponent(uid)}`);
