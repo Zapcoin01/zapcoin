@@ -297,7 +297,6 @@ const [userId, setUserId] = useState(null);
 const [userName, setUserName] = useState('User');
 const isSyncingRef = useRef(false);
 
-// REPLACE your existing Telegram user useEffect (around lines 200-250) with this:
 useEffect(() => {
   const tg = window.Telegram?.WebApp;
   if (tg) {
@@ -308,9 +307,10 @@ useEffect(() => {
     }
 
     const user = tg.initDataUnsafe?.user;
+    // Primary way: Telegram should give you this
     let startParam = tg.initDataUnsafe?.start_param || null;
 
-    // Fallback: URL query params
+    // Fallback: URL query params (some clients pass here)
     if (!startParam) {
       const urlParams = new URLSearchParams(window.location.search);
       startParam =
@@ -338,13 +338,6 @@ useEffect(() => {
       if (startParam) {
         localStorage.setItem('referrerId', startParam);
       }
-
-      // ✅ CRITICAL FIX: Always ensure user is registered in Supabase
-      // This happens for BOTH referred and non-referred users
-      setTimeout(async () => {
-        await ensureUserRegistered(tgId, username);
-      }, 1000); // Small delay to ensure state is set
-
     }
   } else {
     // Fallback if Telegram WebApp context not present
@@ -699,54 +692,51 @@ const fetchProfileAndFriends = async (uid = userId, skipCoinSync = false) => {
   try {
     console.log('Fetching profile and friends for user:', uid);
     
-    // Store current local coins before any server calls
-    const currentLocalCoins = parseInt(localStorage.getItem('coins') || '0');
-    
     // Only sync coins if explicitly allowed
-    if (!skipCoinSync && currentLocalCoins > 0) {
-      console.log('Syncing local coins to server:', currentLocalCoins);
-      try {
-        const syncRes = await fetch('/api/syncCoins', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: uid, localCoins: currentLocalCoins }),
-        });
+if (!skipCoinSync) {
+  const localCoins = parseInt(localStorage.getItem('coins') || '0');
+  if (localCoins > 0) {
+    console.log('Syncing local coins to server:', localCoins);
+    try {
+      const syncRes = await fetch('/api/syncCoins', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: uid, localCoins }),
+      });
 
-        if (syncRes.ok) {
-          const syncData = await syncRes.json();
-          console.log('Coins synced successfully:', syncData);
+      if (syncRes.ok) {
+        const syncData = await syncRes.json();
+        console.log('Coins synced successfully:', syncData);
 
-          // Update state with new server total + any new taps during sync
-          const newLocalCoins = parseInt(localStorage.getItem('coins') || '0');
-          setCoins(syncData.newTotalCoins + newLocalCoins);
-          localStorage.setItem('coins', '0');
+        // 🔥 ONLY update frontend coins IF we trust the server total
+        // BUT do NOT override if user has been tapping during sync
+        const currentLocalCoins = parseInt(localStorage.getItem('coins') || '0');
+        if (currentLocalCoins === 0) {
+          // No new taps during sync → safe to update
+          setCoins(syncData.newTotalCoins);
         } else {
-          console.warn('Failed to sync coins:', await syncRes.text());
+          // User tapped during sync → keep local + server
+          setCoins(syncData.newTotalCoins + currentLocalCoins);
         }
-      } catch (err) {
-        console.error('Sync failed:', err);
+
+        // Always clear only the synced amount
+        localStorage.setItem('coins', '0');
+      } else {
+        console.warn('Failed to sync coins:', await syncRes.text());
       }
+    } catch (err) {
+      console.error('Sync failed:', err);
     }
+  }
+}
     
-    // Fetch updated profile
+    // Then fetch updated profile
     const pRes = await fetch(`/api/getProfile?userId=${encodeURIComponent(uid)}`);
     if (pRes.ok) {
       const { profile } = await pRes.json();
       console.log('Profile fetched:', profile);
       if (profile) {
-        // ⭐ CRITICAL FIX: Don't overwrite coins if we have unsaved local changes
-        const latestLocalCoins = parseInt(localStorage.getItem('coins') || '0');
-        
-        if (latestLocalCoins > 0) {
-          // We have unsaved taps - add them to server total
-          console.log('Preserving local coins:', latestLocalCoins, 'Server coins:', profile.coins);
-          setCoins(Number(profile.coins || 0) + latestLocalCoins);
-        } else if (!skipCoinSync) {
-          // No local changes and we synced - use server total
-          setCoins(Number(profile.coins || 0));
-        }
-        // If skipCoinSync=true and no local coins, don't touch coin state at all
-        
+        setCoins(Number(profile.coins || 0));
         if (profile.username) {
           setUserName(profile.username);
           localStorage.setItem('userName', profile.username);
@@ -774,39 +764,6 @@ const fetchProfileAndFriends = async (uid = userId, skipCoinSync = false) => {
   }
 };
 
-// Add this function after fetchProfileAndFriends (around line 300)
-const ensureUserRegistered = async (uid, username) => {
-  if (!uid || !username) {
-    console.warn('Cannot register user: missing uid or username');
-    return false;
-  }
-
-  try {
-    console.log('Ensuring user is registered:', uid, username);
-    
-    const response = await fetch('/api/registerUser', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId: uid,
-        username: username
-      })
-    });
-
-    const data = await response.json();
-    
-    if (response.ok && data.success) {
-      console.log('User registration successful:', data);
-      return true;
-    } else {
-      console.warn('User registration failed:', data);
-      return false;
-    }
-  } catch (err) {
-    console.error('User registration error:', err);
-    return false;
-  }
-};
 
 const handleCopyLink = async () => {
   const link = `https://t.me/Zapcoinnbot?startapp=${encodeURIComponent(userId)}`;

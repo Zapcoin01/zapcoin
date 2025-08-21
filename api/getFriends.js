@@ -1,4 +1,4 @@
-// Replace your entire /api/getFriends.js with this:
+// api/getFriends.js
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
@@ -36,24 +36,24 @@ export default async function handler(req, res) {
     // Get the referee IDs
     const refereeIds = referrals.map(r => r.referee_id);
 
-    // ✅ FIX: Get friend profiles from 'users' table (not 'profiles')
-    const { data: users, error: usersError } = await supabase
-      .from('users')  // ← Changed from 'profiles' to 'users'
-      .select('user_id, username')  // ← Changed from 'tg_id' to 'user_id'
-      .in('user_id', refereeIds);  // ← Changed from 'tg_id' to 'user_id'
+    // Now get the profile information for these referees
+    const { data: profiles, error: profileError } = await supabase
+      .from('profiles')
+      .select('tg_id, username')
+      .in('tg_id', refereeIds);
 
-    if (usersError) {
-      console.error('Users query error:', usersError);
+    if (profileError) {
+      console.error('Profiles query error:', profileError);
       return res.status(500).json({
         error: 'Failed to fetch friend profiles',
-        details: usersError.message
+        details: profileError.message
       });
     }
 
     // Format the friends data
-    const friends = users.map(user => ({
-      id: user.user_id,  // ← Changed from user.tg_id to user.user_id
-      username: user.username || `user_${user.user_id.slice(-6)}`  // ← Changed field reference
+    const friends = profiles.map(profile => ({
+      id: profile.tg_id,
+      username: profile.username || `user_${profile.tg_id.slice(-6)}`
     }));
 
     return res.status(200).json({ friends });
