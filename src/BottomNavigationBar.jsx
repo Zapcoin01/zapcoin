@@ -297,6 +297,7 @@ const [userId, setUserId] = useState(null);
 const [userName, setUserName] = useState('User');
 const isSyncingRef = useRef(false);
 
+// REPLACE your existing Telegram user useEffect (around lines 200-250) with this:
 useEffect(() => {
   const tg = window.Telegram?.WebApp;
   if (tg) {
@@ -307,10 +308,9 @@ useEffect(() => {
     }
 
     const user = tg.initDataUnsafe?.user;
-    // Primary way: Telegram should give you this
     let startParam = tg.initDataUnsafe?.start_param || null;
 
-    // Fallback: URL query params (some clients pass here)
+    // Fallback: URL query params
     if (!startParam) {
       const urlParams = new URLSearchParams(window.location.search);
       startParam =
@@ -338,6 +338,13 @@ useEffect(() => {
       if (startParam) {
         localStorage.setItem('referrerId', startParam);
       }
+
+      // ✅ CRITICAL FIX: Always ensure user is registered in Supabase
+      // This happens for BOTH referred and non-referred users
+      setTimeout(async () => {
+        await ensureUserRegistered(tgId, username);
+      }, 1000); // Small delay to ensure state is set
+
     }
   } else {
     // Fallback if Telegram WebApp context not present
@@ -764,6 +771,40 @@ const fetchProfileAndFriends = async (uid = userId, skipCoinSync = false) => {
     console.error('fetchProfileAndFriends error:', err);
   } finally {
     setIsLoadingFriends(false);
+  }
+};
+
+// Add this function after fetchProfileAndFriends (around line 300)
+const ensureUserRegistered = async (uid, username) => {
+  if (!uid || !username) {
+    console.warn('Cannot register user: missing uid or username');
+    return false;
+  }
+
+  try {
+    console.log('Ensuring user is registered:', uid, username);
+    
+    const response = await fetch('/api/registerUser', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: uid,
+        username: username
+      })
+    });
+
+    const data = await response.json();
+    
+    if (response.ok && data.success) {
+      console.log('User registration successful:', data);
+      return true;
+    } else {
+      console.warn('User registration failed:', data);
+      return false;
+    }
+  } catch (err) {
+    console.error('User registration error:', err);
+    return false;
   }
 };
 
