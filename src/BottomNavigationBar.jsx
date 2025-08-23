@@ -294,6 +294,30 @@ useEffect(() => {
 
 // Get Telegram user at startup
 const [userId, setUserId] = useState(null);
+
+// Add this in your component (e.g., BottomNavigationBar.jsx)
+const refreshProfile = useCallback(async () => {
+  if (!userId) return;
+  try {
+    const res = await fetch(`/api/getProfile?userId=${userId}`);
+    const data = await res.json();
+    if (data?.profile && typeof data.profile.coins === 'number') {
+      setCoins(data.profile.coins);      // ✅ trust server
+    }
+  } catch (e) {
+    console.error('refreshProfile error', e);
+  }
+}, [userId, setCoins]);
+
+useEffect(() => {
+  if (!userId) return;
+  if (activeTab === 'friends') {
+    handleRefreshFriends();   // your existing function to load friends
+    refreshProfile();         // ✅ NEW: pull fresh balance
+  }
+}, [activeTab, userId, handleRefreshFriends, refreshProfile]);
+
+
 const [userName, setUserName] = useState('User');
 const isSyncingRef = useRef(false);
 
@@ -423,28 +447,6 @@ else {
     });
 
 }, [userId, userName]);
-
-useEffect(() => {
-  if (userId && activeTab === 'friends') {
-    // Only fetch friends data, don't mess with coins unless necessary
-    const fetchFriendsOnly = async () => {
-      setIsLoadingFriends(true);
-      try {
-        const fRes = await fetch(`/api/getFriends?userId=${encodeURIComponent(userId)}`);
-        if (fRes.ok) {
-          const { friends: serverFriends } = await fRes.json();
-          setFriends(serverFriends || []);
-        }
-      } catch (err) {
-        console.error('Failed to fetch friends:', err);
-      } finally {
-        setIsLoadingFriends(false);
-      }
-    };
-    
-    fetchFriendsOnly();
-  }
-}, [activeTab, userId]);
 
 // Sync coins to server periodically
 useEffect(() => {
@@ -789,11 +791,20 @@ const handleCopyLink = async () => {
   }
 };
 
-const handleRefreshFriends = () => {
-  if (userId) {
-    fetchProfileAndFriends(userId);
+const handleRefreshFriends = useCallback(async () => {
+  setIsLoadingFriends(true);
+  try {
+    const res = await fetch(`/api/getFriends?userId=${userId}`);
+    const data = await res.json();
+    setFriends(data?.friends || []);
+    await refreshProfile();     // ✅ NEW: also refresh coins
+  } catch (e) {
+    console.error('handleRefreshFriends error', e);
+  } finally {
+    setIsLoadingFriends(false);
   }
-};
+}, [userId, refreshProfile]);
+
 
 const handleShareInvite = () => {
   const link = `https://t.me/Zapcoinnbot?startapp=${encodeURIComponent(userId)}`;
