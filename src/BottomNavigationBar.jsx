@@ -431,11 +431,6 @@ useEffect(() => {
     .then(res => res.json())
     .then(async data => {
   if (data.success) {
-  if (data.referrerNewCoins) {
-    setCoins(data.referrerNewCoins); // ✅ update coins from server
-    localStorage.setItem('coins', data.referrerNewCoins.toString());
-  }
-  await fetchProfileAndFriends(userId, true);
   alert('Referral recorded — thanks for joining!');
 }
 else {
