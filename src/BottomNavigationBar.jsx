@@ -338,6 +338,15 @@ useEffect(() => {
       if (startParam) {
         localStorage.setItem('referrerId', startParam);
       }
+      
+        // ✅ Ensure user exists in Supabase
+  fetch('/api/ensureProfile', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId: tgId, username }),
+  })
+    .then(res => res.json())
+    .catch(err => console.warn('Failed to ensure profile:', err));
     }
   } else {
     // Fallback if Telegram WebApp context not present
