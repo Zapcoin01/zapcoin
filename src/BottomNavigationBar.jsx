@@ -473,14 +473,12 @@ useEffect(() => {
 
       const data = await response.json();
       if (data.success) {
-        const extraLocal = parseInt(localStorage.getItem('coins') || '0');
-  const finalCoins = data.newTotalCoins + extraLocal;
-  setCoins(finalCoins);
+  setCoins(data.newTotalCoins); // ✅ use server total only
   localStorage.setItem('coins', '0');
-        setLastSyncTime(now);
-        localStorage.setItem('lastSyncTime', now.toString());
-        console.log('Auto-sync successful:', data);
-      }
+  setLastSyncTime(now);
+  localStorage.setItem('lastSyncTime', now.toString());
+  console.log('Auto-sync successful:', data);
+}
     } catch (err) {
       console.error('Auto-sync failed:', err);
     } finally {
@@ -1538,9 +1536,9 @@ ${coins >= getRechargingSpeedCost(rechargingSpeedLevel) ? 'cursor-pointer hover:
             </p>
           </div>
         ) : (
-          friends.map((friend, index) => (
+          friends.map((friend) => (
             <div 
-              key={friend.id || index} 
+              key={friend.id} 
               className="flex items-center gap-3 bg-gray-800/60 hover:bg-gray-800/80 p-3 rounded-lg transition-colors duration-200 border border-gray-700/50"
             >
               <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-lg">

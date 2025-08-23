@@ -38,7 +38,7 @@ export default async function handler(req, res) {
     if (existingErr) throw existingErr;
     if (existing) return res.status(200).json({ success: true, message: 'Already referred' });
 
-    // 4) Ensure referrer profile exists (so we can reward even if they never opened the app)
+    // 4) Ensure referrer profile exists
     await supabase
       .from('profiles')
       .upsert({ tg_id: referrerId }, { onConflict: 'tg_id' });
@@ -50,26 +50,24 @@ export default async function handler(req, res) {
 
     if (insertErr) throw insertErr;
 
-    // 6) Increment referrer coins atomically: read -> update
-    const { data: refData, error: fetchErr } = await supabase
+    // 6) Increment referrer coins ATOMICALLY using Postgres function
+    const reward = 10000;
+    const { error: incErr } = await supabase.rpc('increment_coins', {
+      user_id: referrerId,
+      amount: reward
+    });
+    if (incErr) throw incErr;
+
+    // 7) Get fresh updated balance
+    const { data: updated, error: refErr } = await supabase
       .from('profiles')
       .select('coins')
       .eq('tg_id', referrerId)
       .single();
 
-    if (fetchErr) throw fetchErr;
+    if (refErr) throw refErr;
 
-    const reward = 10000;
-    const newCoins = (refData?.coins || 0) + reward;
-
-    const { error: updateErr } = await supabase
-      .from('profiles')
-      .update({ coins: newCoins })
-      .eq('tg_id', referrerId);
-
-    if (updateErr) throw updateErr;
-
-    // 7) Log transaction
+    // 8) Log transaction
     await supabase.from('transactions').insert({
       tg_id: referrerId,
       amount: reward,
@@ -77,7 +75,13 @@ export default async function handler(req, res) {
       meta: { referee_id: refereeId }
     });
 
-    return res.status(200).json({ success: true, reward, referrerNewCoins: newCoins });
+    // ✅ Final response
+    return res.status(200).json({
+      success: true,
+      reward,
+      referrerNewCoins: updated.coins
+    });
+
   } catch (error) {
     console.error('Referral handler error:', error);
     return res.status(500).json({ error: 'Internal server error', details: error.message });
