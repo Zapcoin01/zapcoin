@@ -21,13 +21,14 @@ export default async function handler(req, res) {
     const { error } = await supabase
       .from('profiles')
       .upsert(
-        {
-          tg_id: userId,
-          username: username || `User_${userId.slice(-6)}`,
-          coins: 0
-        },
-        { onConflict: 'tg_id' }
-      );
+  {
+    tg_id: userId,
+    username: username || `User_${userId.slice(-6)}`
+    // 🚨 removed coins: 0 to avoid overwriting existing balance
+  },
+  { onConflict: 'tg_id', ignoreDuplicates: false }
+);
+
 
     if (error) throw error;
 

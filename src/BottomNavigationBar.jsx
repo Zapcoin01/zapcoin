@@ -407,13 +407,14 @@ useEffect(() => {
     .then(res => res.json())
     .then(async data => {
   if (data.success) {
-    // Refresh profile + friends to reflect DB changes
-    // Skip coin sync since referral already handled server coins
-    await fetchProfileAndFriends(userId, true);
-    
-    // Optional: show a small notice to user
-    alert('Referral recorded — thanks for joining!');
-  } else {
+  if (data.referrerNewCoins) {
+    setCoins(data.referrerNewCoins); // ✅ update coins from server
+    localStorage.setItem('coins', data.referrerNewCoins.toString());
+  }
+  await fetchProfileAndFriends(userId, true);
+  alert('Referral recorded — thanks for joining!');
+}
+else {
     console.warn('Referral API:', data);
   }
 })
@@ -472,8 +473,10 @@ useEffect(() => {
 
       const data = await response.json();
       if (data.success) {
-        setCoins(data.newTotalCoins);
-        localStorage.setItem('coins', '0');
+        const extraLocal = parseInt(localStorage.getItem('coins') || '0');
+  const finalCoins = data.newTotalCoins + extraLocal;
+  setCoins(finalCoins);
+  localStorage.setItem('coins', '0');
         setLastSyncTime(now);
         localStorage.setItem('lastSyncTime', now.toString());
         console.log('Auto-sync successful:', data);
