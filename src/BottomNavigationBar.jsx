@@ -338,7 +338,7 @@ useEffect(() => {
       if (startParam) {
         localStorage.setItem('referrerId', startParam);
       }
-      
+
         // ✅ Ensure user exists in Supabase
   fetch('/api/ensureProfile', {
     method: 'POST',
@@ -409,7 +409,8 @@ useEffect(() => {
   if (data.success) {
     // Refresh profile + friends to reflect DB changes
     // Skip coin sync since referral already handled server coins
-    await fetchProfileAndFriends(userId, true);
+    // After referral, refresh with coin update
+await fetchProfileAndFriends(userId, false); // ← skipCoinSync = false
     
     // Optional: show a small notice to user
     alert('Referral recorded — thanks for joining!');
@@ -424,24 +425,16 @@ useEffect(() => {
 }, [userId, userName]);
 
 useEffect(() => {
+  if (userId) {
+    // Always fetch full profile on app start
+    fetchProfileAndFriends(userId, true); // skipCoinSync = true, but we'll handle coins safely
+  }
+}, [userId]);
+
+useEffect(() => {
   if (userId && activeTab === 'friends') {
-    // Only fetch friends data, don't mess with coins unless necessary
-    const fetchFriendsOnly = async () => {
-      setIsLoadingFriends(true);
-      try {
-        const fRes = await fetch(`/api/getFriends?userId=${encodeURIComponent(userId)}`);
-        if (fRes.ok) {
-          const { friends: serverFriends } = await fRes.json();
-          setFriends(serverFriends || []);
-        }
-      } catch (err) {
-        console.error('Failed to fetch friends:', err);
-      } finally {
-        setIsLoadingFriends(false);
-      }
-    };
-    
-    fetchFriendsOnly();
+    // Only refresh friends list when tab is active
+    fetchProfileAndFriends(userId, true);
   }
 }, [activeTab, userId]);
 
@@ -736,24 +729,26 @@ const fetchProfileAndFriends = async (uid = userId, skipCoinSync = false) => {
       const { profile } = await pRes.json();
       console.log('Profile fetched:', profile);
       if (profile) {
-        // ⭐ CRITICAL FIX: Don't overwrite coins if we have unsaved local changes
-        const latestLocalCoins = parseInt(localStorage.getItem('coins') || '0');
-        
-        if (latestLocalCoins > 0) {
-          // We have unsaved taps - add them to server total
-          console.log('Preserving local coins:', latestLocalCoins, 'Server coins:', profile.coins);
-          setCoins(Number(profile.coins || 0) + latestLocalCoins);
-        } else if (!skipCoinSync) {
-          // No local changes and we synced - use server total
-          setCoins(Number(profile.coins || 0));
-        }
-        // If skipCoinSync=true and no local coins, don't touch coin state at all
-        
-        if (profile.username) {
-          setUserName(profile.username);
-          localStorage.setItem('userName', profile.username);
-        }
-      }
+  const latestLocalCoins = parseInt(localStorage.getItem('coins') || '0');
+  const serverCoins = Number(profile.coins || 0);
+
+  // ✅ Always update coins on app start or profile fetch
+  // But preserve local taps
+  if (latestLocalCoins > 0) {
+    setCoins(serverCoins + latestLocalCoins);
+    console.log('Merging server + local coins:', serverCoins, '+', latestLocalCoins);
+  } else {
+    // No local coins — use server value
+    setCoins(serverCoins);
+  }
+
+  if (profile.username) {
+    setUserName(profile.username);
+    localStorage.setItem('userName', profile.username);
+  }
+  setReferralCode(profile.referral_code || '');
+  setTotalFriends(profile.total_friends || 0);
+}
     } else {
       const errorText = await pRes.text();
       console.warn('getProfile failed:', pRes.status, errorText);
