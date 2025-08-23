@@ -1,5 +1,5 @@
 import { TonConnectButton, useTonWallet } from '@tonconnect/ui-react';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Zap, Pickaxe, CheckSquare, Gift, Users, Copy, Check, Share2 } from 'lucide-react';
 
 const BottomNavigationBar = () => {
