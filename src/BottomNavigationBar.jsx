@@ -309,6 +309,20 @@ const refreshProfile = useCallback(async () => {
   }
 }, [userId, setCoins]);
 
+const handleRefreshFriends = useCallback(async () => {
+  setIsLoadingFriends(true);
+  try {
+    const res = await fetch(`/api/getFriends?userId=${userId}`);
+    const data = await res.json();
+    setFriends(data?.friends || []);
+    await refreshProfile();     // ✅ NEW: also refresh coins
+  } catch (e) {
+    console.error('handleRefreshFriends error', e);
+  } finally {
+    setIsLoadingFriends(false);
+  }
+}, [userId, refreshProfile]);
+
 useEffect(() => {
   if (!userId) return;
   if (activeTab === 'friends') {
@@ -785,21 +799,6 @@ const handleCopyLink = async () => {
     alert('Link copied!');
   }
 };
-
-const handleRefreshFriends = useCallback(async () => {
-  setIsLoadingFriends(true);
-  try {
-    const res = await fetch(`/api/getFriends?userId=${userId}`);
-    const data = await res.json();
-    setFriends(data?.friends || []);
-    await refreshProfile();     // ✅ NEW: also refresh coins
-  } catch (e) {
-    console.error('handleRefreshFriends error', e);
-  } finally {
-    setIsLoadingFriends(false);
-  }
-}, [userId, refreshProfile]);
-
 
 const handleShareInvite = () => {
   const link = `https://t.me/Zapcoinnbot?startapp=${encodeURIComponent(userId)}`;
