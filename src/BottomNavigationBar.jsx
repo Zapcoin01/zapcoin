@@ -295,19 +295,26 @@ useEffect(() => {
 // Get Telegram user at startup
 const [userId, setUserId] = useState(null);
 
-// Add this in your component (e.g., BottomNavigationBar.jsx)
 const refreshProfile = useCallback(async () => {
   if (!userId) return;
   try {
-    const res = await fetch(`/api/getProfile?userId=${userId}`);
+    const res = await fetch(`/api/getProfile?userId=${encodeURIComponent(userId)}`);
+    if (!res.ok) {
+      console.warn('refreshProfile failed:', res.status);
+      return;
+    }
     const data = await res.json();
     if (data?.profile && typeof data.profile.coins === 'number') {
-      setCoins(data.profile.coins);      // ✅ trust server
+      const serverCoins = Number(data.profile.coins) || 0;
+      // IMPORTANT: never reduce the displayed coins.
+      // If the server has more than the UI, update UI; otherwise keep the higher local value.
+      setCoins(prev => Math.max(prev, serverCoins));
     }
   } catch (e) {
     console.error('refreshProfile error', e);
   }
 }, [userId, setCoins]);
+
 
 const handleRefreshFriends = useCallback(async () => {
   setIsLoadingFriends(true);
@@ -327,7 +334,6 @@ useEffect(() => {
   if (!userId) return;
   if (activeTab === 'friends') {
     handleRefreshFriends();   // your existing function to load friends
-    refreshProfile();         // ✅ NEW: pull fresh balance
   }
 }, [activeTab, userId, handleRefreshFriends, refreshProfile]);
 
