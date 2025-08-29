@@ -462,6 +462,7 @@ useEffect(() => {
     .then(res => res.json())
     .then(async data => {
   if (data.success) {
+    handleRefreshFriends();
   alert('Referral recorded — thanks for joining!');
 }
 else {
