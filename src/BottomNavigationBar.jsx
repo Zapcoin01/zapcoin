@@ -295,25 +295,36 @@ useEffect(() => {
 // Get Telegram user at startup
 const [userId, setUserId] = useState(null);
 
+// How many coins on this device have NOT been sent to the server yet?
+const getPendingCoins = () => {
+  const totalOnDevice = parseInt(localStorage.getItem('coins') || '0');        // what UI is showing / cached
+  const lastServer = parseInt(localStorage.getItem('lastServerCoins') || '0'); // the last balance we KNOW the server has
+  const pending = totalOnDevice - lastServer;
+  return Number.isFinite(pending) && pending > 0 ? pending : 0;
+};
+
+
 const refreshProfile = useCallback(async () => {
   if (!userId) return;
   try {
-    const res = await fetch(`/api/getProfile?userId=${encodeURIComponent(userId)}`);
-    if (!res.ok) {
-      console.warn('refreshProfile failed:', res.status);
-      return;
-    }
+    const res = await fetch(`/api/getProfile?userId=${userId}`);
     const data = await res.json();
-    if (data?.profile && typeof data.profile.coins === 'number') {
-      const serverCoins = Number(data.profile.coins) || 0;
-      // IMPORTANT: never reduce the displayed coins.
-      // If the server has more than the UI, update UI; otherwise keep the higher local value.
-      setCoins(prev => Math.max(prev, serverCoins));
+    if (data?.profile) {
+      const serverCoins = Number(data.profile.coins || 0);
+      const pending = getPendingCoins(); // local coins not yet synced
+      const total = serverCoins + pending;
+
+      // Remember what the server has right now
+      localStorage.setItem('lastServerCoins', String(serverCoins));
+
+      // Show merged total and cache it so next pending calc is correct
+      setCoins(total);
+      localStorage.setItem('coins', String(total));
     }
   } catch (e) {
     console.error('refreshProfile error', e);
   }
-}, [userId, setCoins]);
+}, [userId]);
 
 
 const handleRefreshFriends = useCallback(async () => {
@@ -463,7 +474,7 @@ else {
 
 }, [userId, userName]);
 
-// Sync coins to server periodically
+// Sync coins to server periodically (only the pending delta)
 useEffect(() => {
   if (!userId) return;
 
@@ -471,40 +482,42 @@ useEffect(() => {
     if (isSyncingRef.current) return;
     isSyncingRef.current = true;
 
-    const now = Date.now();
-    const localCoinsRaw = localStorage.getItem('coins');
-    const localCoins = localCoinsRaw ? parseInt(localCoinsRaw) || 0 : 0;
-
-    if (localCoins <= 0) {
+    const pending = getPendingCoins(); // only unsynced amount
+    if (pending <= 0) {
       isSyncingRef.current = false;
       return;
     }
 
-    console.log('Auto-syncing coins:', localCoins);
     try {
       const response = await fetch('/api/syncCoins', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, localCoins }),
+        body: JSON.stringify({ userId, localCoins: pending, clientTime: Date.now() }),
       });
 
       const data = await response.json();
       if (data.success) {
-  setCoins(data.newTotalCoins); // ✅ use server total only
-  localStorage.setItem('coins', '0');
-  setLastSyncTime(now);
-  localStorage.setItem('lastSyncTime', now.toString());
-  console.log('Auto-sync successful:', data);
-}
+        // Server now includes the pending amount
+        localStorage.setItem('lastServerCoins', String(data.newTotalCoins));
+
+        // Align UI and cache with the new server total (no pending left)
+        setCoins(data.newTotalCoins);
+        localStorage.setItem('coins', String(data.newTotalCoins));
+
+        const now = Date.now();
+        setLastSyncTime(now);
+        localStorage.setItem('lastSyncTime', String(now));
+      }
     } catch (err) {
       console.error('Auto-sync failed:', err);
     } finally {
-      isSyncingRef.current = false; // 🔓 Release lock
+      isSyncingRef.current = false;
     }
-  }, 30000); // Every 30 seconds
+  }, 30000); // every 30s
 
   return () => clearInterval(syncInterval);
 }, [userId]);
+
 
 const handleCoinClick = (e) => {
 // Only vibrate if not already vibrating
@@ -721,57 +734,26 @@ const fetchProfileAndFriends = async (uid = userId, skipCoinSync = false) => {
     
     // Store current local coins before any server calls
     const currentLocalCoins = parseInt(localStorage.getItem('coins') || '0');
-    
-    // Only sync coins if explicitly allowed
-    if (!skipCoinSync && currentLocalCoins > 0) {
-      console.log('Syncing local coins to server:', currentLocalCoins);
-      try {
-        const syncRes = await fetch('/api/syncCoins', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: uid, localCoins: currentLocalCoins }),
-        });
 
-        if (syncRes.ok) {
-          const syncData = await syncRes.json();
-          console.log('Coins synced successfully:', syncData);
-
-          // Update state with new server total + any new taps during sync
-          const newLocalCoins = parseInt(localStorage.getItem('coins') || '0');
-          setCoins(syncData.newTotalCoins + newLocalCoins);
-          localStorage.setItem('coins', '0');
-        } else {
-          console.warn('Failed to sync coins:', await syncRes.text());
-        }
-      } catch (err) {
-        console.error('Sync failed:', err);
-      }
-    }
-    
     // Fetch updated profile
     const pRes = await fetch(`/api/getProfile?userId=${encodeURIComponent(uid)}`);
     if (pRes.ok) {
       const { profile } = await pRes.json();
       console.log('Profile fetched:', profile);
       if (profile) {
-        // ⭐ CRITICAL FIX: Don't overwrite coins if we have unsaved local changes
-        const latestLocalCoins = parseInt(localStorage.getItem('coins') || '0');
-        
-        if (latestLocalCoins > 0) {
-          // We have unsaved taps - add them to server total
-          console.log('Preserving local coins:', latestLocalCoins, 'Server coins:', profile.coins);
-          setCoins(Number(profile.coins || 0) + latestLocalCoins);
-        } else if (!skipCoinSync) {
-          // No local changes and we synced - use server total
-          setCoins(Number(profile.coins || 0));
-        }
-        // If skipCoinSync=true and no local coins, don't touch coin state at all
-        
-        if (profile.username) {
-          setUserName(profile.username);
-          localStorage.setItem('userName', profile.username);
-        }
-      }
+  const serverCoins = Number(profile.coins || 0);
+  const pending = getPendingCoins();
+  const total = serverCoins + pending;
+
+  localStorage.setItem('lastServerCoins', String(serverCoins));
+  setCoins(total);
+  localStorage.setItem('coins', String(total));
+
+  if (profile.username) {
+    setUserName(profile.username);
+    localStorage.setItem('userName', profile.username);
+  }
+}
     } else {
       const errorText = await pRes.text();
       console.warn('getProfile failed:', pRes.status, errorText);
