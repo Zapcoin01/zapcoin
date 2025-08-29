@@ -43,10 +43,11 @@ export default async function handler(req, res) {
       .from('profiles')
       .upsert({ tg_id: referrerId }, { onConflict: 'tg_id' });
 
-    // 5) Insert referral
-    const { error: insertErr } = await supabase
-      .from('referrals')
-      .insert({ referrer_id: referrerId, referee_id: refereeId });
+    // 5) Insert referral (use insert, not upsert)
+const { error: insertErr } = await supabase
+  .from('referrals')
+  .insert({ referrer_id: referrerId, referee_id: refereeId });
+
 
     if (insertErr) throw insertErr;
 
