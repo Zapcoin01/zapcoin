@@ -18,14 +18,7 @@ export default async function handler(req, res) {
     // 1) Ensure referee profile exists / update username
     const { error: profErr } = await supabase
       .from('profiles')
-      .upsert({ 
-        tg_id: refereeId, 
-        username: refereeUsername,
-        coins: 0 // Initialize with 0 coins for new users
-      }, { 
-        onConflict: 'tg_id',
-        ignoreDuplicates: false 
-      });
+      .upsert({ tg_id: refereeId, username: refereeUsername }, { onConflict: 'tg_id' });
 
     if (profErr) throw profErr;
 
@@ -45,92 +38,52 @@ export default async function handler(req, res) {
     if (existingErr) throw existingErr;
     if (existing) return res.status(200).json({ success: true, message: 'Already referred' });
 
-    // 4) Ensure referrer profile exists and get current balance
-    const { data: referrerProfile, error: referrerErr } = await supabase
+    // 4) Ensure referrer profile exists
+    await supabase
       .from('profiles')
-      .select('coins')
-      .eq('tg_id', referrerId)
-      .maybeSingle();
+      .upsert({ tg_id: referrerId }, { onConflict: 'tg_id' });
 
-    if (referrerErr) throw referrerErr;
-
-    // If referrer doesn't exist, create profile
-    if (!referrerProfile) {
-      await supabase
-        .from('profiles')
-        .upsert({ 
-          tg_id: referrerId, 
-          coins: 0 
-        }, { onConflict: 'tg_id' });
-    }
-
-    // 5) Insert referral record FIRST
+    // 5) Insert referral
     const { error: insertErr } = await supabase
       .from('referrals')
-      .insert({ 
-        referrer_id: referrerId, 
-        referee_id: refereeId,
-        created_at: new Date().toISOString()
-      });
+      .insert({ referrer_id: referrerId, referee_id: refereeId });
 
     if (insertErr) throw insertErr;
 
-    // 6) Get the current coins before adding reward
-    const { data: currentProfile, error: currentErr } = await supabase
+    // 6) Increment referrer coins ATOMICALLY using Postgres function
+    const reward = 10000;
+    const { error: incErr } = await supabase.rpc('increment_coins', {
+      user_id: referrerId,
+      amount: reward
+    });
+    if (incErr) throw incErr;
+
+    // 7) Get fresh updated balance
+    const { data: updated, error: refErr } = await supabase
       .from('profiles')
       .select('coins')
       .eq('tg_id', referrerId)
       .single();
 
-    if (currentErr) throw currentErr;
+    if (refErr) throw refErr;
 
-    const currentCoins = currentProfile.coins || 0;
-    const reward = 10000;
-    const newTotalCoins = currentCoins + reward;
-
-    // 7) Update referrer coins with the new total
-    const { error: updateErr } = await supabase
-      .from('profiles')
-      .update({ 
-        coins: newTotalCoins,
-        updated_at: new Date().toISOString()
-      })
-      .eq('tg_id', referrerId);
-
-    if (updateErr) throw updateErr;
-
-    // 8) Log transaction for audit trail
+    // 8) Log transaction
     await supabase.from('transactions').insert({
       tg_id: referrerId,
       amount: reward,
       reason: 'referral_reward',
-      meta: { 
-        referee_id: refereeId,
-        referee_username: refereeUsername,
-        previous_balance: currentCoins,
-        new_balance: newTotalCoins
-      },
-      created_at: new Date().toISOString()
+      meta: { referee_id: refereeId }
     });
 
-    console.log(`Referral processed: ${referrerId} referred ${refereeId}, earned ${reward} coins. New balance: ${newTotalCoins}`);
-
-    // 9) Return detailed response for frontend
+    // ✅ Final response
     return res.status(200).json({
       success: true,
       reward,
-      referrerPreviousCoins: currentCoins,
-      referrerNewCoins: newTotalCoins,
-      refereeId,
-      refereeUsername,
-      message: 'Referral reward added successfully'
+      referrerNewCoins: updated.coins
     });
 
   } catch (error) {
     console.error('Referral handler error:', error);
-    return res.status(500).json({ 
-      error: 'Internal server error', 
-      details: error.message 
-    });
+    return res.status(500).json({ error: 'Internal server error', details: error.message });
   }
 }
