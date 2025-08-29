@@ -306,20 +306,39 @@ const getPendingCoins = () => {
 
 const refreshProfile = useCallback(async () => {
   if (!userId) return;
+  
   try {
     const res = await fetch(`/api/getProfile?userId=${userId}`);
     const data = await res.json();
+    
     if (data?.profile) {
       const serverCoins = Number(data.profile.coins || 0);
-      const pending = getPendingCoins(); // local coins not yet synced
-      const total = serverCoins + pending;
-
-      // Remember what the server has right now
-      localStorage.setItem('lastServerCoins', String(serverCoins));
-
-      // Show merged total and cache it so next pending calc is correct
-      setCoins(total);
-      localStorage.setItem('coins', String(total));
+      
+      // Get current local coins that haven't been synced yet
+      const currentLocalCoins = parseInt(localStorage.getItem('coins') || '0');
+      const lastServerCoins = parseInt(localStorage.getItem('lastServerCoins') || '0');
+      
+      // Only add pending coins that are truly pending (not already on server)
+      const truePendingCoins = Math.max(0, currentLocalCoins - lastServerCoins);
+      
+      // If server has more coins than we expected, it means we got a reward
+      if (serverCoins > lastServerCoins) {
+        // Server has new coins (like referral rewards), merge with any local pending
+        const newTotal = serverCoins + truePendingCoins;
+        
+        console.log(`Coin sync: Server=${serverCoins}, Local=${currentLocalCoins}, LastServer=${lastServerCoins}, TruePending=${truePendingCoins}, NewTotal=${newTotal}`);
+        
+        // Update both state and localStorage
+        setCoins(newTotal);
+        localStorage.setItem('coins', String(newTotal));
+        localStorage.setItem('lastServerCoins', String(serverCoins));
+      }
+      
+      // Update username if available
+      if (data.profile.username) {
+        setUserName(data.profile.username);
+        localStorage.setItem('userName', data.profile.username);
+      }
     }
   } catch (e) {
     console.error('refreshProfile error', e);
@@ -330,10 +349,18 @@ const refreshProfile = useCallback(async () => {
 const handleRefreshFriends = useCallback(async () => {
   setIsLoadingFriends(true);
   try {
-    const res = await fetch(`/api/getFriends?userId=${userId}`);
-    const data = await res.json();
-    setFriends(data?.friends || []);
-    await refreshProfile();     // ✅ NEW: also refresh coins
+    // First refresh the profile to get latest coin balance
+    await refreshProfile();
+    
+    // Then get friends with a small delay to ensure referral is in DB
+    setTimeout(async () => {
+      const res = await fetch(`/api/getFriends?userId=${userId}`);
+      const data = await res.json();
+      
+      console.log('Friends fetched:', data?.friends); // Debug log
+      setFriends(data?.friends || []);
+    }, 500); // Small delay to ensure DB consistency
+    
   } catch (e) {
     console.error('handleRefreshFriends error', e);
   } finally {
@@ -460,12 +487,28 @@ useEffect(() => {
     })
   })
     .then(res => res.json())
-    .then(async data => {
-  if (data.success) {
-  alert('Referral recorded — thanks for joining!');
-}
-else {
-    console.warn('Referral API:', data);
+.then(async data => {
+  console.log('Referral response:', data);
+  
+  if (data.success && data.reward) {
+    // Show success message
+    alert(`Referral recorded! Referrer earned ${data.reward} coins!`);
+    
+    // If we are the referrer (unlikely but possible), refresh our profile
+    if (referrerId === userId) {
+      await refreshProfile();
+    }
+    
+    // Refresh friends list for the referrer (if this person is viewing friends)
+    if (activeTab === 'friends') {
+      setTimeout(() => {
+        handleRefreshFriends();
+      }, 1000); // Delay to ensure DB consistency
+    }
+  } else if (data.success) {
+    console.log('Referral already processed or other success case');
+  } else {
+    console.warn('Referral API warning:', data);
   }
 })
     .catch(err => {
@@ -1503,15 +1546,20 @@ ${coins >= getRechargingSpeedCost(rechargingSpeedLevel) ? 'cursor-pointer hover:
         
         {/* Refresh Button */}
         <button
-          onClick={handleRefreshFriends}
-          disabled={isLoadingFriends}
-          className="bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-lg transition-colors duration-200 disabled:opacity-50"
-          title="Refresh friends list"
-        >
-          <div className={`w-4 h-4 ${isLoadingFriends ? 'animate-spin' : ''}`}>
-            🔄
-          </div>
-        </button>
+  onClick={() => {
+    handleRefreshFriends();
+    // Also refresh profile to sync coins
+    refreshProfile();
+  }}
+  disabled={isLoadingFriends}
+  className="bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-lg transition-colors duration-200 disabled:opacity-50 flex items-center gap-1"
+  title="Refresh friends list and sync coins"
+>
+  <div className={`w-4 h-4 ${isLoadingFriends ? 'animate-spin' : ''}`}>
+    🔄
+  </div>
+  {isLoadingFriends && <span className="text-xs">Syncing...</span>}
+</button>
       </div>
       
       <div className="max-h-60 overflow-y-auto space-y-3 pr-2">
