@@ -1,6 +1,6 @@
 import { TonConnectButton, useTonWallet } from '@tonconnect/ui-react';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Zap, Pickaxe, CheckSquare, Gift, Users, Copy, Check, Share2 } from 'lucide-react';
+import { Zap, Pickaxe, CheckSquare, Gift, Users, Copy, Check, Share2, RotateCcw } from 'lucide-react';
 
 const BottomNavigationBar = () => {
 const [activeTab, setActiveTab] = useState('mine');
@@ -1506,12 +1506,10 @@ ${coins >= getRechargingSpeedCost(rechargingSpeedLevel) ? 'cursor-pointer hover:
         <button
           onClick={handleRefreshFriends}
           disabled={isLoadingFriends}
-          className="bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-lg transition-colors duration-200 disabled:opacity-50"
+          className="bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-lg transition-colors duration-200 disabled:opacity-50 flex items-center justify-center"
           title="Refresh friends list"
-        >
-          <div className={`w-4 h-4 ${isLoadingFriends ? 'animate-spin' : ''}`}>
-            🔄
-          </div>
+          >
+          <RotateCcw className={`w-5 h-5 ${isLoadingFriends ? 'animate-spin' : ''}`} />
         </button>
       </div>
       
