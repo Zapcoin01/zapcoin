@@ -28,17 +28,17 @@ export default async function handler(req, res) {
         inline_keyboard: [
           [
             {
-              text: "⚡ Open ZapCoin App",
+              text: "⚡ Open App",
               web_app: {
                 url: `https://zapcoin-murex.vercel.app?start=${referralCode || ""}`
               }
             }
           ],
           [
-            { text: "💬 Join Community", url: "https://t.me/moopanda1m" }
+            { text: " Join Community", url: "https://t.me/moopanda1m" }
           ],
           [
-            { text: "🐦 Follow Twitter", url: "https://x.com/FlipgameTon" }
+            { text: " Follow Twitter", url: "https://x.com/FlipgameTon" }
           ]
         ]
       }
